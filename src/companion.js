@@ -9,7 +9,7 @@ import { Memory } from "./memory.js";
 import { Timings } from "./debug.js";
 import { buildSystemPrompt, DEFAULT_PERSONA, MOODS, DEPTHS } from "./persona.js";
 import { streamChat } from "./lab.js";
-import { vadThresholds, REGIMES } from "./settings.js";
+import { vadThresholds, REGIMES, replyLength } from "./settings.js";
 import { pickThought } from "./thoughts.js";
 
 const MOOD_TAG = /^\s*(?:\[([a-z]+)\]\s*)+/i;
@@ -106,7 +106,7 @@ export class Companion extends EventTarget {
     this.tts.postMessage({
       type: "load",
       engine: this.settings.ttsEngine,
-      device,
+      device: this.settings.ttsDevice === "cpu" ? "wasm" : device, // the voice can leave the GPU to the model
       voice: this.settings.voice,
       speed: this.settings.speed,
     });
@@ -365,7 +365,16 @@ export class Companion extends EventTarget {
     const pace = this._questionPacing();
     if (pace) hints.push(pace);
     const modelText = [text, ...hints].filter(Boolean).join("\n") || null;
-    const msg = { type: "turn", id, audio, image, text: modelText, sampling: !!this.settings.sampling, primer: this.memory.asMessages(12) };
+    const msg = {
+      type: "turn",
+      id,
+      audio,
+      image,
+      text: modelText,
+      sampling: !!this.settings.sampling,
+      maxNewTokens: replyLength(this.settings) === "short" ? 110 : 360,
+      primer: this.memory.asMessages(12),
+    };
     const transfer = [];
     if (audio) transfer.push(audio.buffer);
     if (image) transfer.push(image.data.buffer);
@@ -408,6 +417,7 @@ export class Companion extends EventTarget {
         messages,
         signal: cur.controller.signal,
         sampling: !!this.settings.sampling,
+        maxTokens: replyLength(this.settings) === "short" ? 120 : 400,
         onDelta: (piece) => this._onToken(cur.id, piece),
       });
       this._onDone({ id: cur.id, text: full, tokens: 0, interrupted: false });
@@ -472,8 +482,12 @@ export class Companion extends EventTarget {
    */
   _questionPacing() {
     const notes = [];
-    // a thin last reply asks for a fuller one this time
-    if (this.lastReplyWords != null && this.lastReplyWords < 15) {
+    const short = replyLength(this.settings) === "short";
+    if (short) {
+      // a phone: a long burst of GPU work can cost the device, so she quips
+      notes.push("(Two or three sentences at most. A quip is fine.)");
+    } else if (this.lastReplyWords != null && this.lastReplyWords < 15) {
+      // a thin last reply asks for a fuller one this time
       notes.push("(A fuller reply this time: three to five sentences, about the specific thing they said, with a turn of your own in it: an observation, a bit of your past, an opinion.)");
     }
     const last = this.asked[this.asked.length - 1];
@@ -481,7 +495,7 @@ export class Companion extends EventTarget {
     else {
       const lastTwo = this.asked.slice(-2);
       if (lastTwo.length === 2 && lastTwo.every((a) => a === false) && Math.random() < 0.6) {
-        notes.push("(If there is something you want to know, you may end with one short question.)");
+        notes.push("(If there is something you want to know, you may end with one short question. One, not two.)");
       } else if (Math.random() < 0.5) notes.push("(No question this time.)");
     }
     return notes.join("\n") || null;

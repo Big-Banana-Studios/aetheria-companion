@@ -6,15 +6,15 @@
  *          onDelta: (text: string) => void, sampling?: boolean}} p
  * @returns {Promise<string>} the full reply
  */
-export async function streamChat({ url, model, apiKey, messages, signal, onDelta, sampling = false }) {
+export async function streamChat({ url, model, apiKey, messages, signal, onDelta, sampling = false, maxTokens = 400 }) {
   const headers = { "Content-Type": "application/json" };
   if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
   const body = {
     model,
     messages,
     stream: true,
-    temperature: sampling ? 1.0 : 0.3,
-    max_tokens: 400,
+    temperature: sampling ? 0.8 : 0.3,
+    max_tokens: maxTokens,
   };
   const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body), signal });
   if (!res.ok) {

@@ -150,7 +150,7 @@ function samplingArgs(sampling) {
     : { do_sample: false, repetition_penalty: 1.08 };
 }
 
-async function gemmaTurn({ id, audio, image, text, sampling }) {
+async function gemmaTurn({ id, audio, image, text, sampling, maxNewTokens }) {
   if (g.ids && g.ids.length > CONTEXT_SOFT_LIMIT) {
     post({ type: "info", message: "context long; re-priming from memory" });
     await disposeCache();
@@ -211,7 +211,7 @@ async function gemmaTurn({ id, audio, image, text, sampling }) {
     input_ids,
     attention_mask,
     ...(g.cache ? { past_key_values: g.cache } : {}),
-    max_new_tokens: MAX_NEW_TOKENS,
+    max_new_tokens: maxNewTokens || MAX_NEW_TOKENS,
     ...samplingArgs(sampling),
     streamer,
     stopping_criteria: stopping,
@@ -242,7 +242,7 @@ async function transcribe(audio) {
   return (text || "").trim();
 }
 
-async function textTurn({ id, audio, text, sampling }) {
+async function textTurn({ id, audio, text, sampling, maxNewTokens }) {
   let userText = text || "";
   if (audio) {
     const tr = await transcribe(audio);
@@ -274,7 +274,7 @@ async function textTurn({ id, audio, text, sampling }) {
   const out = await model.generate({
     ...inputs,
     ...(t.cache ? { past_key_values: t.cache } : {}),
-    max_new_tokens: MAX_NEW_TOKENS,
+    max_new_tokens: maxNewTokens || MAX_NEW_TOKENS,
     ...samplingArgs(sampling),
     streamer,
     stopping_criteria: stopping,

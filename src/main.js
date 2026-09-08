@@ -460,6 +460,8 @@ function openSettings() {
   $("set-initiate").checked = settings.initiate !== false;
   $("set-scene").checked = settings.scene !== false;
   $("set-sampling").checked = !!settings.sampling;
+  $("set-length").value = settings.replyLength || "auto";
+  $("set-ttsdevice").value = settings.ttsDevice === "cpu" ? "cpu" : "auto";
   $("set-regime").value = settings.regime;
   $("set-stt").value = settings.sttModel || "tiny";
   $("set-persona").value = settings.persona || DEFAULT_PERSONA;
@@ -514,6 +516,14 @@ function bindSettings() {
   $("set-sampling").addEventListener("change", (e) => {
     settings.sampling = e.target.checked;
     settings.samplingChosen = true;
+    saveSettings(settings);
+  });
+  $("set-length").addEventListener("change", (e) => {
+    settings.replyLength = e.target.value;
+    saveSettings(settings);
+  });
+  $("set-ttsdevice").addEventListener("change", (e) => {
+    settings.ttsDevice = e.target.value;
     saveSettings(settings);
   });
   $("set-regime").addEventListener("change", (e) => {

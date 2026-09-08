@@ -30,7 +30,13 @@ const BANDS = [
   ["HEAD", 3504, 6336],
 ];
 
+/** A phone: shorter replies by default, and the option to keep the GPU for the model. */
+export const IS_MOBILE =
+  typeof navigator !== "undefined" && (navigator.userAgentData?.mobile === true || /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent));
+
 export const DEFAULTS = {
+  replyLength: "auto", // auto (short on phones, full on PCs) | short | full
+  ttsDevice: "auto", // auto (GPU) | gpu | cpu: where the voice runs
   brain: "gemma", // gemma | text | lab
   voice: "af_nicole", // the one that hits for her
   speed: 1.0,
@@ -69,6 +75,12 @@ export function saveSettings(s) {
   } catch (e) {
     console.warn("settings not saved", e);
   }
+}
+
+/** "short" or "full": how much she says per turn. */
+export function replyLength(settings) {
+  if (settings.replyLength === "short" || settings.replyLength === "full") return settings.replyLength;
+  return IS_MOBILE ? "short" : "full";
 }
 
 /** Silero thresholds from the 0..100 sensitivity slider. */

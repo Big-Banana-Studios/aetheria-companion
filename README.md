@@ -113,6 +113,14 @@ vad→sent    audio handed to the model
 done        generation finished, tok/s
 ```
 
+**Phones quip.** Android's GPU has a hang watchdog, and a five-sentence
+reply with sampling on, synthesized alongside, is a long enough burst to
+trip it (seen on the ROG Phone as a lost WebGPU device). So on a phone she
+answers in two or three sentences with a hard cap of 110 generated tokens;
+on a PC she gets the full three to six. Settings → Reply length overrides
+either way, and "Voice runs on: CPU" takes the second-heaviest load off the
+phone's GPU if losses continue, at the cost of slower speech.
+
 **If the GPU goes away** (Windows resets a GPU that runs a kernel too long,
 a driver hiccups, Chrome's GPU process restarts), each worker notices on
 its next run, rebuilds its sessions from the browser cache, and retries;
