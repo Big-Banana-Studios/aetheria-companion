@@ -186,6 +186,15 @@ device experiments) are accepted; `--keep` leaves Chrome and the server up.
   questions). Settings can also follow the Aetheria Reader's last frequency
   when the Reader is served from the same origin
   (`aetheria_checkpoint.selectedFrequency` in `localStorage`).
+- **Replies with something in them.** The persona asks for three to six
+  sentences that meet the concrete thing you said and add something of her
+  own, with a worked example (a fresh coffee and a smoke break). Sampling
+  is on by default at a moderate temperature (0.75, top-k 50, top-p 0.9);
+  greedy decoding kept her generic. If her last reply was under about
+  fifteen words, the next turn carries a note asking for a fuller one.
+  Measured: to "just made a fresh coffee, stepping out for a smoke, long
+  day" she now answers "The first sip warms the cold. Those ten minutes feel
+  like they stretch forever. It shows how much the day weighs on you."
 - **She asks back, but does not interview.** The app keeps score of whether
   her last reply ended in a question and tells her, turn by turn, whether
   one is welcome: never two running, and usually not; a small model told

@@ -48,7 +48,9 @@ async function main() {
   window.__gpu = gpu;
   await loadSprite();
   if (q0.has("debug")) settings.debug = true;
-  // experiments: ?devices=embed_tokens:wasm,decoder_model_merged:webgpu (this run only, never saved)
+  // experiments, this run only: ?sampling=0|1
+  if (q0.has("sampling")) Object.defineProperty(settings, "sampling", { value: q0.get("sampling") !== "0", enumerable: false, writable: true });
+  // ?devices=embed_tokens:wasm,decoder_model_merged:webgpu (this run only, never saved)
   delete settings.deviceMap;
   if (q0.get("devices")) {
     Object.defineProperty(settings, "deviceMap", {
@@ -511,6 +513,7 @@ function bindSettings() {
   });
   $("set-sampling").addEventListener("change", (e) => {
     settings.sampling = e.target.checked;
+    settings.samplingChosen = true;
     saveSettings(settings);
   });
   $("set-regime").addEventListener("change", (e) => {

@@ -142,8 +142,11 @@ function resetText() {
 // ---------------------------------------------------------------- gemma turn
 
 function samplingArgs(sampling) {
+  // Greedy is the safest thing a 2B model can do and the most generic.
+  // Moderate sampling gives her opinions; the model card's 1.0 / 64 / 0.95
+  // is a little wild at this size.
   return sampling
-    ? { do_sample: true, temperature: 1.0, top_k: 64, top_p: 0.95 }
+    ? { do_sample: true, temperature: 0.75, top_k: 50, top_p: 0.9, repetition_penalty: 1.05 }
     : { do_sample: false, repetition_penalty: 1.08 };
 }
 

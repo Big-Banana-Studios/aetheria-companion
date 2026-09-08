@@ -16,7 +16,7 @@
 //   6. prints the transcript, the latency overlay, console errors, and saves
 //      shots/pc-test-*.png.
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { launchChrome, killTree, sleep, waitHttp } from "./cdp.mjs";
@@ -27,6 +27,7 @@ const brain = args.get("brain") || "gemma";
 const keep = args.has("keep");
 const devices = args.get("devices"); // e.g. embed_tokens:wasm
 const preview = args.has("preview"); // serve the production build (dist/) instead of the dev server
+const sampling = args.get("sampling"); // "0" or "1": override the sampling setting for this run
 const PORT = 5173;
 const DEBUG = 9334;
 const profile = join(root, ".chrome-test-profile");
@@ -40,7 +41,7 @@ const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 // ---------------------------------------------------------------- test audio
 
 async function readWav16k(url) {
-  const buf = await (await fetch(url)).arrayBuffer();
+  const buf = url.startsWith("file:") ? new Uint8Array(readFileSync(fileURLToPath(url))).buffer : await (await fetch(url)).arrayBuffer();
   const dv = new DataView(buf);
   let off = 12;
   let fmt = null;
@@ -96,7 +97,9 @@ async function prepareAudio() {
   const micPath = join(testDir, "fake-mic.wav");
   let speech;
   if (existsSync(clipPath)) {
+    // tools/make_utterance.mjs wrote a conversational line; use it
     speech = await readWav16k(`file:///${clipPath.replace(/\\/g, "/")}`).catch(() => null);
+    if (speech) log(`using .test/utterance-16k.wav (${(speech.length / 16000).toFixed(1)} s)`);
   }
   if (!speech) {
     log("fetching the test clip…");
@@ -140,7 +143,7 @@ try {
       "--force_high_performance_gpu", // laptops with two GPUs: WebGPU on the discrete one
       "--window-size=520,1040",
     ],
-    url: `http://localhost:${PORT}/?debug${devices ? `&devices=${devices}` : ""}`,
+    url: `http://localhost:${PORT}/?debug${devices ? `&devices=${devices}` : ""}${sampling != null ? `&sampling=${sampling}` : ""}`,
   }));
   log("chrome up; page loaded");
   await sleep(1500);

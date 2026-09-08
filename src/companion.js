@@ -466,13 +466,20 @@ export class Companion extends EventTarget {
    * running, and usually not at all.
    */
   _questionPacing() {
-    const last = this.asked[this.asked.length - 1];
-    if (last === true) return "(No question this time. Answer, react, or offer a thought of your own.)";
-    const lastTwo = this.asked.slice(-2);
-    if (lastTwo.length === 2 && lastTwo.every((a) => a === false) && Math.random() < 0.6) {
-      return "(If there is something you want to know, you may end with one short question.)";
+    const notes = [];
+    // a thin last reply asks for a fuller one this time
+    if (this.lastReplyWords != null && this.lastReplyWords < 15) {
+      notes.push("(A fuller reply this time: three to five sentences, about the specific thing they said, with something of your own in it.)");
     }
-    return Math.random() < 0.5 ? "(No question this time.)" : null;
+    const last = this.asked[this.asked.length - 1];
+    if (last === true) notes.push("(No question this time. Answer, react, or offer a thought of your own.)");
+    else {
+      const lastTwo = this.asked.slice(-2);
+      if (lastTwo.length === 2 && lastTwo.every((a) => a === false) && Math.random() < 0.6) {
+        notes.push("(If there is something you want to know, you may end with one short question.)");
+      } else if (Math.random() < 0.5) notes.push("(No question this time.)");
+    }
+    return notes.join("\n") || null;
   }
 
   /**
@@ -580,9 +587,10 @@ export class Companion extends EventTarget {
       this.memory.push({ role: "assistant", text: cur.spoken.trim() + (interrupted ? " —" : ""), mood: cur.mood || "calm" });
       cur.interrupted = !!interrupted;
       if (!cur.silent || cur.raw !== cur.spoken) {
-        // did she ask something? (her own thoughts do not count)
+        // did she ask something? and how much did she say? (her own thoughts do not count)
         this.asked.push(/\?["')\]]*\s*$/.test(cur.spoken.trim()));
         if (this.asked.length > 4) this.asked.shift();
+        this.lastReplyWords = cur.spoken.trim().split(/\s+/).length;
       }
       this._showHer(cur, false);
     } else if (blank) {

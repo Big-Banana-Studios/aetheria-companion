@@ -40,7 +40,7 @@ export const DEFAULTS = {
   smokeBreaks: true,
   initiate: true, // she speaks up when it has been quiet a while
   scene: true, // the rainy street behind her
-  sampling: false,
+  sampling: true, // varied replies; greedy decoding made her generic
   regime: "topic", // topic (the conversation's depth) | reader | GUT | HEART | HEAD
   sttModel: "tiny", // tiny | base: Moonshine for the transcript strip
   persona: null, // null = default persona.md
@@ -56,6 +56,7 @@ export function loadSettings() {
     const s = JSON.parse(raw);
     if (s.regime === "auto") s.regime = "topic"; // older builds
     delete s.deviceMap; // an experiment flag that once leaked into storage
+    if (s.sampling === false && !s.samplingChosen) s.sampling = true; // the old default, never a choice
     return { ...structuredClone(DEFAULTS), ...s, lab: { ...DEFAULTS.lab, ...(s.lab || {}) } };
   } catch {
     return structuredClone(DEFAULTS);
