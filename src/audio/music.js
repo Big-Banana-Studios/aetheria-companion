@@ -79,6 +79,7 @@ export class Music {
     this.rainOn = true;
     this.volume = 0.4;
     this.rainVolume = 0.5; // the storm's own level: rain bed and thunder
+    this.thunderOn = true;
     this.duck = 1;
     this.regime = "HEART";
     this.mood = "calm";
@@ -230,6 +231,16 @@ export class Music {
     this._level();
   }
 
+  setThunder(on) {
+    this.thunderOn = !!on;
+  }
+
+  /** Beats per minute of the bed; the pluck echo follows. */
+  setTempo(bpm) {
+    this.bpm = Math.max(40, Math.min(140, Number(bpm) || 76));
+    this.delay.delayTime.setTargetAtTime((60 / this.bpm) * 0.75, this.ctx.currentTime, 0.5);
+  }
+
   setState(state) {
     this.duck = DUCK[state] ?? 1;
     this._level();
@@ -255,13 +266,13 @@ export class Music {
 
   /** A lightning strike: a low rumble, louder when near. */
   thunder(near = 0.5) {
-    if (!this.enabled || !this.running) return;
+    if (!this.running || !this.thunderOn) return;
     const c = this.ctx;
     const src = c.createBufferSource();
     src.buffer = this.noise.buffer;
     const g = c.createGain();
     const t = c.currentTime + 0.15 + Math.random() * 0.25 * (1 - near);
-    const peak = (0.25 + 0.55 * near) * (this.rainOn ? this.rainVolume * 2 : 0);
+    const peak = (0.25 + 0.55 * near) * this.rainVolume * 2;
     if (peak <= 0.001) return;
     g.gain.setValueAtTime(0, t);
     g.gain.linearRampToValueAtTime(peak, t + 0.12);
@@ -276,9 +287,11 @@ export class Music {
 
   _level() {
     const now = this.ctx.currentTime;
-    const music = this.enabled && this.running ? this.volume * this.duck : 0;
-    this.master.gain.setTargetAtTime(Math.min(1, music + 0.0001), now, 0.6);
-    // the rain sits on the master too, so it ducks with the music; its own level follows the storm and its slider
+    // the master only ducks; the bed's bus carries the music volume; the rain
+    // sits on the master with its own slider, so the storm is heard with the
+    // bed switched off, and everything ducks together under her voice
+    this.master.gain.setTargetAtTime(this.running ? this.duck : 0.0001, now, 0.6);
+    this.bus.gain.setTargetAtTime(this.running && this.enabled ? this.volume : 0.0001, now, 0.6);
     const rain = this.rainOn ? (0.07 + 0.15 * this.rain) * this.rainVolume : 0;
     this.rainGain.gain.setTargetAtTime(rain, now, 1.2);
     this.rainLfoGain.gain.setTargetAtTime(rain * 0.35, now, 1.2);

@@ -119,6 +119,13 @@ export class SpriteRenderer {
     this.scene.storm = !!on;
   }
 
+  /** The storm's parts. @param {{rain?: boolean, gusts?: boolean, lightning?: boolean}} p */
+  setStormParts(p) {
+    if (p.rain != null) this.scene.rainOn = !!p.rain;
+    if (p.gusts != null) this.scene.gustsOn = !!p.gusts;
+    if (p.lightning != null) this.scene.lightningOn = !!p.lightning;
+  }
+
   setMood(mood) {
     this.mood = this.moods[mood] ? mood : "calm";
     this.scene.setMood(this.mood);

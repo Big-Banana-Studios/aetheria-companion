@@ -73,6 +73,9 @@ function stagePreview(q) {
   if (q.get("regime")) settings.regime = q.get("regime");
   if (q.get("scene") === "0") settings.scene = false;
   if (q.get("storm") === "0") settings.storm = false;
+  for (const [param, key] of [["rain", "stormRain"], ["gusts", "stormGusts"], ["lightning", "stormLightning"]]) {
+    if (q.get(param) === "0") settings[key] = false;
+  }
   applyRegime();
   renderer.resize();
   renderer.start();
@@ -95,6 +98,7 @@ function stagePreview(q) {
         const m = new Music(ctx);
         m.setVolume((Number(q.get("music")) || 40) / 100);
         m.setRainVolume((Number(q.get("stormvol")) || 50) / 100);
+        if (q.get("tempo")) m.setTempo(Number(q.get("tempo")));
         m.setRegime(renderer.scene.regime);
         renderer.scene.onStrike = (near) => m.thunder(near);
         m.start();
@@ -171,6 +175,7 @@ function applyRegime() {
   renderer?.setRegime(r.name);
   renderer?.setSceneEnabled(settings.scene !== false);
   renderer?.setStorm(settings.storm !== false);
+  renderer?.setStormParts({ rain: settings.stormRain !== false, gusts: settings.stormGusts !== false, lightning: settings.stormLightning !== false });
   showRegimeChip(r);
 }
 
@@ -484,6 +489,11 @@ function openSettings() {
   $("set-storm").checked = settings.storm !== false;
   $("set-storm-vol").value = settings.stormVolume ?? 50;
   $("set-storm-vol-val").textContent = settings.stormVolume ?? 50;
+  $("set-music-tempo").value = settings.musicTempo ?? 76;
+  $("set-music-tempo-val").textContent = settings.musicTempo ?? 76;
+  for (const [id, key] of [["set-storm-rain", "stormRain"], ["set-storm-gusts", "stormGusts"], ["set-storm-lightning", "stormLightning"], ["set-storm-sound", "stormSound"], ["set-storm-thunder", "stormThunder"]]) {
+    $(id).checked = settings[key] !== false;
+  }
   $("set-scene").checked = settings.scene !== false;
   $("set-sampling").checked = !!settings.sampling;
   $("set-length").value = settings.replyLength || "auto";
@@ -557,6 +567,20 @@ function bindSettings() {
     saveSettings(settings);
     companion?.applyAmbience();
   });
+  $("set-music-tempo").addEventListener("input", (e) => {
+    settings.musicTempo = Number(e.target.value);
+    $("set-music-tempo-val").textContent = settings.musicTempo;
+    saveSettings(settings);
+    companion?.applyAmbience();
+  });
+  for (const [id, key] of [["set-storm-rain", "stormRain"], ["set-storm-gusts", "stormGusts"], ["set-storm-lightning", "stormLightning"], ["set-storm-sound", "stormSound"], ["set-storm-thunder", "stormThunder"]]) {
+    $(id).addEventListener("change", (e) => {
+      settings[key] = e.target.checked;
+      saveSettings(settings);
+      if (companion) companion.applyAmbience();
+      else renderer?.setStormParts({ rain: settings.stormRain, gusts: settings.stormGusts, lightning: settings.stormLightning });
+    });
+  }
   $("set-scene").addEventListener("change", (e) => {
     settings.scene = e.target.checked;
     saveSettings(settings);

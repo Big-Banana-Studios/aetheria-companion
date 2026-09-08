@@ -39,8 +39,14 @@ export const DEFAULTS = {
   ttsDevice: "auto", // auto (GPU) | gpu | cpu: where the voice runs
   music: true, // the synth bed
   musicVolume: 40, // 0..100
-  storm: true, // the rain, the gusts, the lightning, and their sound (the street stays)
+  storm: true, // the storm as a whole (the street stays)
+  stormRain: true, // its parts, each its own switch
+  stormGusts: true,
+  stormLightning: true,
+  stormSound: true, // the rain's hiss
+  stormThunder: true,
   stormVolume: 50, // 0..100: the storm's sound
+  musicTempo: 76, // BPM of the bed
   brain: "gemma", // gemma | text | lab
   voice: "af_nicole", // the one that hits for her
   speed: 1.0,

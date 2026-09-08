@@ -149,12 +149,17 @@ export class Companion extends EventTarget {
 
   /** Settings → the synth bed and the rain sound. */
   applyAmbience() {
-    this.renderer.setStorm(this.settings.storm !== false);
+    const s = this.settings;
+    const storm = s.storm !== false;
+    this.renderer.setStorm(storm);
+    this.renderer.setStormParts({ rain: s.stormRain !== false, gusts: s.stormGusts !== false, lightning: s.stormLightning !== false });
     if (!this.music) return;
-    this.music.setEnabled(this.settings.music !== false);
-    this.music.setVolume((Number(this.settings.musicVolume) || 0) / 100);
-    this.music.setRainSound(this.settings.storm !== false);
-    this.music.setRainVolume((Number(this.settings.stormVolume ?? 50) || 0) / 100);
+    this.music.setEnabled(s.music !== false);
+    this.music.setVolume((Number(s.musicVolume) || 0) / 100);
+    this.music.setTempo(s.musicTempo || 76);
+    this.music.setRainSound(storm && s.stormRain !== false && s.stormSound !== false);
+    this.music.setThunder(storm && s.stormLightning !== false && s.stormThunder !== false);
+    this.music.setRainVolume((Number(s.stormVolume ?? 50) || 0) / 100);
   }
 
   /** Everything is loaded: start listening. She runs in. */

@@ -147,6 +147,9 @@ export class Scene {
     this.sparks = [];
     this.shake = 0;
     this.storm = true; // off: a dry night on the same street
+    this.rainOn = true; // the storm's parts
+    this.gustsOn = true;
+    this.lightningOn = true;
     this.gust = 1; // a downpour now and then
     this.gustUntil = 0;
     this.nextGust = 20 + Math.random() * 40;
@@ -510,11 +513,11 @@ export class Scene {
       this.gustUntil = this.t + 8 + Math.random() * 14;
       this.nextGust = 25 + Math.random() * 60;
     }
-    const gustWant = this.t < this.gustUntil ? 1.7 : 1;
+    const gustWant = this.gustsOn && this.t < this.gustUntil ? 1.7 : 1;
     this.gust += (gustWant - this.gust) * Math.min(1, dt * 0.35);
     const base = this.moodRain[this.mood] ?? 0.75;
     const stateK = { listening: 0.8, asleep: 0.6, error: 1.3, idle_long: 0.95 }[this.state] ?? 1;
-    const want = this.storm ? clamp(base * this.look.rainK * stateK * this.gust, 0.08, 1.6) : 0;
+    const want = this.storm && this.rainOn ? clamp(base * this.look.rainK * stateK * this.gust, 0.08, 1.6) : 0;
     this.rain += (want - this.rain) * Math.min(1, dt * 0.5);
     // the lamp comes up when she listens
     const lampWant = this.state === "listening" ? 1.35 + this.listen * 0.4 : this.state === "asleep" ? 0.6 : 1;
@@ -552,7 +555,7 @@ export class Scene {
       this.flashT += dt;
       if (this.flashT > 1.1) this.flashT = -1;
     }
-    if (this.storm) this.nextStrike -= dt * (0.5 + this.rain);
+    if (this.storm && this.lightningOn) this.nextStrike -= dt * (0.5 + this.rain);
     if (this.nextStrike <= 0) {
       this.strike(Math.random() * Math.random());
       this.nextStrike = 10 + Math.random() * 30;

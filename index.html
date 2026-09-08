@@ -113,11 +113,21 @@
 
         <fieldset>
           <legend>Ambience</legend>
-          <label class="row"><input id="set-music" type="checkbox" checked /> Synth bed (ducks under her voice)</label>
+          <label class="row"><input id="set-music" type="checkbox" checked /> Synth bed (ducks under her voice; tuned to 432 Hz)</label>
           <label>Volume <span id="set-music-vol-val">40</span>
             <input id="set-music-vol" type="range" min="0" max="100" step="5" value="40" />
           </label>
-          <label class="row"><input id="set-storm" type="checkbox" checked /> Rain storm (the rain, the gusts, the lightning, and their sound; the street stays)</label>
+          <label>Tempo <span id="set-music-tempo-val">76</span> bpm
+            <input id="set-music-tempo" type="range" min="48" max="120" step="2" value="76" />
+          </label>
+          <label class="row"><input id="set-storm" type="checkbox" checked /> Rain storm (the street stays either way)</label>
+          <div class="sub">
+            <label class="row"><input id="set-storm-rain" type="checkbox" checked /> Rain</label>
+            <label class="row"><input id="set-storm-gusts" type="checkbox" checked /> Gusts and downpours</label>
+            <label class="row"><input id="set-storm-lightning" type="checkbox" checked /> Lightning</label>
+            <label class="row"><input id="set-storm-sound" type="checkbox" checked /> The sound of the rain</label>
+            <label class="row"><input id="set-storm-thunder" type="checkbox" checked /> Thunder</label>
+          </div>
           <label>Storm volume <span id="set-storm-vol-val">50</span>
             <input id="set-storm-vol" type="range" min="0" max="100" step="5" value="50" />
           </label>
