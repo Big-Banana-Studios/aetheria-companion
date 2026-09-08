@@ -220,6 +220,11 @@ export class Companion extends EventTarget {
     this.vad?.postMessage({ type: "ptt_up" });
   }
 
+  /** Test hook: the model worker's next generation fails as a lost GPU device. */
+  simulateGpuLoss() {
+    this.llm?.postMessage({ type: "simulate_gpu_loss" });
+  }
+
   /** Stop her mid-sentence. */
   interrupt() {
     if (!this.current || this.current.finished) return;
@@ -759,6 +764,7 @@ export class Companion extends EventTarget {
         break;
       case "info":
         this.dispatchEvent(new CustomEvent("info", { detail: m.message }));
+        if (/device was lost/.test(m.message)) this.dispatchEvent(new CustomEvent("toast", { detail: "the GPU reset; reloading her voice…" }));
         break;
       case "audio": {
         const cur = this.current;
@@ -792,6 +798,9 @@ export class Companion extends EventTarget {
       case "progress":
         this.dispatchEvent(new CustomEvent("progress", { detail: m }));
         break;
+      case "info":
+        this.dispatchEvent(new CustomEvent("info", { detail: m.message }));
+        break;
       case "transcript": {
         // the turn may already be over; the words still belong to it
         const turn = this.memory.turns.find((t) => t.id === m.id) || (this.current?.id === m.id ? this.current.userTurn : null);
@@ -823,6 +832,8 @@ export class Companion extends EventTarget {
       case "info":
         this.dispatchEvent(new CustomEvent("info", { detail: m.message }));
         if (/^retrying/.test(m.message)) this.dispatchEvent(new CustomEvent("toast", { detail: "one more try…" }));
+        if (/device was lost/.test(m.message)) this.dispatchEvent(new CustomEvent("toast", { detail: "the GPU reset; bringing her back…" }));
+        if (/your turn is kept/.test(m.message)) this.dispatchEvent(new CustomEvent("toast", { detail: "still bringing her back; she heard you" }));
         break;
       case "first_token":
         this.timings.mark("first_token", m.id);

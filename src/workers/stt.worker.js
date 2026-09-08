@@ -11,9 +11,12 @@ import { pipeline } from "@huggingface/transformers";
 const STT_IDS = { tiny: "onnx-community/moonshine-tiny-ONNX", base: "onnx-community/moonshine-base-ONNX" };
 let transcriber = null;
 let chain = Promise.resolve();
+let lastLoad = null;
+const LOST = /device.*lost|lost.*device|DEVICE_LOST|GPUDevice|device is destroyed|Invalid device|GPU process/i;
 const post = (m) => self.postMessage(m);
 
 async function load({ device = "webgpu", model = "tiny" }) {
+  lastLoad = { device, model };
   const id = STT_IDS[model] || STT_IDS.tiny;
   try {
     transcriber = await pipeline("automatic-speech-recognition", id, {
@@ -38,6 +41,20 @@ self.onmessage = async ({ data }) => {
         const { text } = await transcriber(data.audio);
         post({ type: "transcript", id: data.id, text: (text || "").trim(), ms: Math.round(performance.now() - t0) });
       } catch (e) {
+        if (LOST.test(String(e.message)) && lastLoad) {
+          // the GPU went away: rebuild from the cache and transcribe again
+          post({ type: "info", message: "the GPU device was lost; reloading the transcriber" });
+          try {
+            transcriber = null;
+            await load(lastLoad);
+            const { text } = await transcriber(data.audio);
+            post({ type: "transcript", id: data.id, text: (text || "").trim(), ms: Math.round(performance.now() - t0) });
+            return;
+          } catch (e2) {
+            post({ type: "error", id: data.id, message: `Transcription reload failed: ${e2.message}` });
+            return;
+          }
+        }
         post({ type: "error", id: data.id, message: `Transcription: ${e.message}` });
       }
     });

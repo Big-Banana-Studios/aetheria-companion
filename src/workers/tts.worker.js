@@ -85,10 +85,13 @@ let speed = 1;
 let generation = 0;
 const queue = [];
 let pumping = false;
+let lastLoad = null; // to rebuild after a lost GPU device
+const LOST = /device.*lost|lost.*device|DEVICE_LOST|GPUDevice|device is destroyed|Invalid device|GPU process/i;
 
 const post = (m, t) => self.postMessage(m, t);
 
 async function load({ engine: eng = "kokoro", device = "webgpu", dtype = null, voice: v, speed: s }) {
+  lastLoad = { engine: eng, device, dtype, voice: v, speed: s };
   engine = eng;
   if (v) voice = v;
   if (s) speed = s;
@@ -143,6 +146,19 @@ async function pump() {
         [samples.buffer],
       );
     } catch (e) {
+      if (LOST.test(String(e.message)) && !job.retried && lastLoad) {
+        // the GPU went away: rebuild the voice from the cache and say it again
+        post({ type: "info", message: "the GPU device was lost; reloading the voice" });
+        try {
+          tts = null;
+          await load(lastLoad);
+          queue.unshift({ ...job, retried: true });
+          continue;
+        } catch (e2) {
+          post({ type: "error", id: job.id, seq: job.seq, message: `TTS reload failed: ${e2.message}` });
+          continue;
+        }
+      }
       if (g === generation) post({ type: "error", id: job.id, seq: job.seq, message: `TTS: ${e.message}` });
     }
   }

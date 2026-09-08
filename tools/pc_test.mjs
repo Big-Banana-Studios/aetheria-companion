@@ -28,6 +28,7 @@ const keep = args.has("keep");
 const devices = args.get("devices"); // e.g. embed_tokens:wasm
 const preview = args.has("preview"); // serve the production build (dist/) instead of the dev server
 const sampling = args.get("sampling"); // "0" or "1": override the sampling setting for this run
+const gpucrash = args.has("gpucrash"); // kill Chrome's GPU process mid-session and check she recovers
 const PORT = 5173;
 const DEBUG = 9334;
 const profile = join(root, ".chrome-test-profile");
@@ -248,6 +249,24 @@ try {
   const checkin = await waitForTurn(cdp, 120000);
   log("check-in line:", JSON.stringify(checkin.her), checkin.state);
   log("timings:", checkin.debug.replace(/\n/g, " · "));
+
+  if (gpucrash) {
+    // The model worker's next generation fails as a lost GPU device (Chrome
+    // ignores chrome://gpucrash opened over the protocol, so this is
+    // simulated inside the worker). She should rebuild from the cache and
+    // answer anyway, with the "bringing her back" toast on the way.
+    log("simulating a lost GPU device in the model worker…");
+    await cdp.eval(`window.__companion.simulateGpuLoss()`);
+    while (!(phase() > 13 && phase() < 30)) await sleep(500);
+    const tCrash = Date.now();
+    await cdp.eval(`window.__companion._turn({ text: "Still there? Say something." })`);
+    log("turn after the loss; waiting (reload + reply)…");
+    const after = await waitForTurn(cdp, 240000);
+    log(`after-loss reply (${((Date.now() - tCrash) / 1000).toFixed(0)} s):`, JSON.stringify(after.her), after.state);
+    for (const c of cdp.drain()) if (/lost|reload|error|exception/i.test(c)) log("  console:", c.slice(0, 200));
+    if (!after.her || after.state !== "idle") throw new Error("no reply after the GPU loss");
+    log("recovered from the GPU loss");
+  }
   for (const c of cdp.drain()) if (/error|exception|warn/i.test(c)) log("  console:", c.slice(0, 200));
   ok = !!reply.her;
   log(ok ? "PIPELINE OK" : "PIPELINE INCOMPLETE");
@@ -278,7 +297,10 @@ try {
 async function waitForTurn(cdp, timeoutMs) {
   const t0 = Date.now();
   let lastHer = "";
+  // a NEW line of hers, not one that was already there
+  const herBefore = await cdp.eval(`document.querySelectorAll('#lines .line.her').length`);
   for (;;) {
+    const herCount = await cdp.eval(`document.querySelectorAll('#lines .line.her').length`);
     const state = await cdp.eval(`document.getElementById('state-chip')?.textContent || ''`);
     const her = await cdp.eval(`(() => { const l = [...document.querySelectorAll('#lines .line.her')]; return l.length ? l[l.length - 1].textContent : ''; })()`);
     const user = await cdp.eval(`(() => { const l = [...document.querySelectorAll('#lines .line.user')]; return l.length ? l[l.length - 1].textContent : ''; })()`);
@@ -290,9 +312,10 @@ async function waitForTurn(cdp, timeoutMs) {
     }
     if (toast) log("  toast:", toast);
     for (const c of cdp.drain()) if (/error|exception/i.test(c)) log("  console:", c.slice(0, 200));
-    if (her && state === "idle") return { her, user, debug, state };
-    if (state === "error") return { her, user, debug, state };
-    if (Date.now() - t0 > timeoutMs) return { her, user, debug, state: `timeout(${state})` };
+    const fresh = herCount > herBefore;
+    if (fresh && her && state === "idle") return { her, user, debug, state };
+    if (state === "error") return { her: fresh ? her : "", user, debug, state };
+    if (Date.now() - t0 > timeoutMs) return { her: fresh ? her : "", user, debug, state: `timeout(${state})` };
     await sleep(1000);
   }
 }

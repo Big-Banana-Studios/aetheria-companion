@@ -113,6 +113,13 @@ vad→sent    audio handed to the model
 done        generation finished, tok/s
 ```
 
+**If the GPU goes away** (Windows resets a GPU that runs a kernel too long,
+a driver hiccups, Chrome's GPU process restarts), each worker notices on
+its next run, rebuilds its sessions from the browser cache, and retries;
+you see "the GPU reset; bringing her back…" and about 20 s of thinking on
+a PC. A turn that fails twice for any reason gets the same rebuild.
+`npm run test:pc -- --gpucrash` exercises it.
+
 Levers if it is slow: shorter first sentences (the persona already asks for
 them), `q4` vs `q4f16`, Kokoro on WASM if the GPU is contended, and the
 "creative sampling" toggle off (greedy is a little faster).

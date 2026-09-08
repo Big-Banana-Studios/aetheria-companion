@@ -289,6 +289,72 @@ def pick_loop(n_window, want, period):
     return [min(n_window - 1, int(round(i * period / want))) for i in range(want)]
 
 
+def even_count(period, want):
+    """A frame count near `want` whose gaps are (nearly) whole source frames.
+
+    Twelve frames out of a 27-frame stride land at gaps of two, then three,
+    then two: a tempo that lurches by half every few frames, which the eye
+    reads as a jerk in the body. Choosing the count so period/count is close
+    to an integer keeps every gap the same size. The clip's fps is scaled to
+    match, so the cycle takes the same time it did.
+    """
+    best, best_err = want, 1e9
+    for n in range(max(4, want - 4), want + 5):
+        gap = period / n
+        err = abs(gap - round(gap))
+        if err < best_err - 1e-6 or (abs(err - best_err) < 1e-6 and abs(n - want) < abs(best - want)):
+            best, best_err = n, err
+    return best
+
+
+def stabilise(imgs, frame_px):
+    """Take the jitter out of a cycle's upper body without touching its motion.
+
+    Generated frames wobble a pixel or two from frame to frame. Per frame,
+    find the head (the top slice of the visible body) and its centre; fit a
+    smooth periodic path through those centres (a 3-wide circular moving
+    average); and nudge each frame by the whole-pixel residual. The bob and
+    the sway survive; the twitch does not.
+    """
+    if len(imgs) < 4:
+        return imgs
+    xs, ys = [], []
+    for im in imgs:
+        box = opaque_box(im)
+        if box is None:
+            xs.append(None)
+            ys.append(None)
+            continue
+        x0, y0, x1, y1 = box
+        top = y0 + max(3, int((y1 - y0) * 0.22))     # the head: the top fifth or so
+        px = im.load()
+        sx = sy = n = 0
+        for y in range(y0, top):
+            for x in range(x0, x1):
+                if px[x, y][3] > VISIBLE:
+                    sx += x
+                    sy += y
+                    n += 1
+        xs.append(sx / n if n else None)
+        ys.append(sy / n if n else None)
+    if any(v is None for v in xs):
+        return imgs
+    m = len(imgs)
+    out = []
+    for i, im in enumerate(imgs):
+        ax = (xs[i - 1] + xs[i] + xs[(i + 1) % m]) / 3.0
+        ay = (ys[i - 1] + ys[i] + ys[(i + 1) % m]) / 3.0
+        dx = int(round(ax - xs[i]))
+        dy = int(round(ay - ys[i]))
+        if dx == 0 and dy == 0:
+            out.append(im)
+            continue
+        shifted = Image.new("RGBA", (frame_px, frame_px), (0, 0, 0, 0))
+        _paste_clipped(shifted, im, dx, dy)
+        out.append(shifted)
+    return out
+
+
 def _luminance(frames, step=4):
     out = []
     for f in frames:
@@ -499,10 +565,17 @@ def build(packs, out, frame_px, char_h, feet_y, talk):
         period = float(n_src)
         if kind == "cycle":
             frames, period = one_stride(frames, gait=name.startswith(("walk", "run")))
-            idx = pick_loop(len(frames), want, period)
             loop = True
             if period >= n_src:
                 note = "no clear cycle - sampled across the whole clip"
+            else:
+                # even gaps, same cycle time: the count moves, the fps follows
+                n_even = even_count(period, want)
+                if n_even != want:
+                    fps = round(fps * n_even / float(want), 1)
+                    note = (note + "; " if note else "") + f"{n_even} frames for even gaps"
+                    want = n_even
+            idx = pick_loop(len(frames), want, period)
         elif kind == "uncut":
             idx = pick_loop(len(frames), want, float(len(frames)))
             loop = True
@@ -526,6 +599,8 @@ def build(packs, out, frame_px, char_h, feet_y, talk):
             idle_transform = (k, cx, feet)
         chosen = [frames[i] for i in idx]
         imgs = [render(f, k, cx, feet, frame_px, feet_y) for f in chosen]
+        if kind == "cycle":
+            imgs = stabilise(imgs, frame_px)
         clips[name] = {"fps": fps, "loop": loop, "facing": FACING.get(name, "down"),
                        "frames": [], "source": source_name(source),
                        "source_frames": n_src, "kept": [int(i) for i in idx],
