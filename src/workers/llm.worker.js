@@ -160,7 +160,7 @@ async function gemmaTurn({ id, audio, image, text, sampling }) {
 
   let promptStr;
   if (!g.ids) {
-    const messages = [{ role: "system", content: system }, ...primer, { role: "user", content: parts }];
+    const messages = [{ role: "system", content: system }, ...primer.slice(-8), { role: "user", content: parts }];
     promptStr = processor.apply_chat_template(messages, { add_generation_prompt: true, enable_thinking: false });
   } else {
     // Continue the cached conversation by hand. Verified against the template:
@@ -333,7 +333,7 @@ self.onmessage = async ({ data }) => {
 
 let pendingTurn = null;
 
-async function runTurn(data) {
+async function runTurn(data, retried = false) {
   busy = true;
   const t0 = performance.now();
   try {
@@ -341,9 +341,18 @@ async function runTurn(data) {
     post({ type: "done", id: data.id, ...r, ms: Math.round(performance.now() - t0) });
   } catch (e) {
     console.error(e);
-    post({ type: "error", id: data.id, message: `Generation: ${e.message}` });
     if (brain === "gemma") await disposeCache();
     else t.cache = null;
+    if (!retried && !stopping?.interrupted) {
+      // A GPU run can fail once (a lost device, a buffer the driver would not
+      // give). Try again from a fresh, shorter context before giving up.
+      post({ type: "info", message: `retrying after: ${e.message}`.slice(0, 200) });
+      primer = (data.primer || primer).slice(-4);
+      busy = false;
+      await runTurn(data, true);
+      return;
+    }
+    post({ type: "error", id: data.id, message: `Generation: ${e.message}` });
   } finally {
     busy = false;
   }

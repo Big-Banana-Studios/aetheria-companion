@@ -26,6 +26,7 @@ const args = new Map(process.argv.slice(2).map((a) => a.replace(/^--/, "").split
 const brain = args.get("brain") || "gemma";
 const keep = args.has("keep");
 const devices = args.get("devices"); // e.g. embed_tokens:wasm
+const preview = args.has("preview"); // serve the production build (dist/) instead of the dev server
 const PORT = 5173;
 const DEBUG = 9334;
 const profile = join(root, ".chrome-test-profile");
@@ -123,9 +124,9 @@ try {
   const { speech, micPath } = await prepareAudio();
   log(`test utterance ${(speech.length / 16000).toFixed(1)} s; fake mic file ${micPath}`);
 
-  server = spawn(win ? "npx.cmd" : "npx", ["vite", "--port", String(PORT), "--strictPort"], { cwd: root, stdio: "ignore", shell: win });
+  server = spawn(win ? "npx.cmd" : "npx", ["vite", ...(preview ? ["preview"] : []), "--port", String(PORT), "--strictPort"], { cwd: root, stdio: "ignore", shell: win });
   await waitHttp(`http://localhost:${PORT}/`, 300);
-  log(`dev server up on http://localhost:${PORT}/`);
+  log(`${preview ? "preview (dist/)" : "dev"} server up on http://localhost:${PORT}/`);
 
   ({ proc: chrome, cdp } = await launchChrome({
     headless: false,

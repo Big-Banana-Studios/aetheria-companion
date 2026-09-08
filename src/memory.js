@@ -59,11 +59,18 @@ export class Memory {
     }
   }
 
-  /** Chat messages for re-priming a fresh model context (text only). */
-  asMessages(limit = 12) {
+  /**
+   * Chat messages for re-priming a fresh model context (text only). Kept
+   * modest: on a phone the whole primer is prefilled on the GPU with the
+   * system prompt and the audio, so long turns are clipped.
+   */
+  asMessages(limit = 8, maxChars = 240) {
     return this.turns
       .slice(-limit)
       .filter((t) => t.text && t.text.trim())
-      .map((t) => ({ role: t.role, content: t.role === "user" ? t.text : `[${t.mood || "calm"}] ${t.text}` }));
+      .map((t) => {
+        const text = t.text.length > maxChars ? t.text.slice(0, maxChars).replace(/\s+\S*$/, "") + "…" : t.text;
+        return { role: t.role, content: t.role === "user" ? text : `[${t.mood || "calm"}] ${text}` };
+      });
   }
 }

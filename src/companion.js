@@ -736,6 +736,7 @@ export class Companion extends EventTarget {
         break;
       case "info":
         this.dispatchEvent(new CustomEvent("info", { detail: m.message }));
+        if (/^retrying/.test(m.message)) this.dispatchEvent(new CustomEvent("toast", { detail: "one more try…" }));
         break;
       case "first_token":
         this.timings.mark("first_token", m.id);

@@ -205,6 +205,8 @@ async function start() {
   companion.addEventListener("error", (e) => {
     setGateMsg(e.detail, true);
     toast(e.detail, true);
+    debug?.set("last error", String(e.detail).slice(0, 160)); // stays in the overlay after the toast is gone
+    $("last-error").textContent = `Last error: ${e.detail}`; // and in Settings, in full, for a phone
   });
   wireCompanion();
 
@@ -581,9 +583,11 @@ window.addEventListener("error", (e) => {
   const msg = `${e.message} (${(e.filename || "").split("/").pop()}:${e.lineno})`;
   setGateMsg(msg, true);
   if (!$("stage").hidden) toast(msg, true);
+  $("last-error").textContent = `Last error: ${msg}`;
 });
 window.addEventListener("unhandledrejection", (e) => {
   const msg = `unhandled: ${e.reason?.message || e.reason}`;
   setGateMsg(msg, true);
   if (!$("stage").hidden) toast(msg, true);
+  $("last-error").textContent = `Last error: ${msg}`;
 });

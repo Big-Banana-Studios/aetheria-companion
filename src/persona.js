@@ -15,16 +15,13 @@ export const DEPTHS = { small: "HEART", mid: "GUT", deep: "HEAD" };
  * @param {{audio: boolean, camera: boolean}} caps  what this brain can do
  */
 export function buildSystemPrompt(persona, { audio = true, camera = true } = {}) {
+  // Kept short on purpose: the whole prompt is prefilled on a phone's GPU.
   const rules = [
-    `Begin every reply with two tags and a space. First a mood tag, the one that fits how you feel about what was just said: [calm] [happy] [curious] [concerned] [amused] [excited] [annoyed] [sassy] [tired] [thoughtful]. Sassy is for cheek and backchat, annoyed for real irritation. Then a depth tag for where the conversation is right now: [small] for chit-chat, greetings, weather and jokes; [mid] for something personal or practical, the day, work, plans, how they feel; [deep] for the big questions, meaning, fear, the past, what people are for. Example: "[curious] [mid] Long day, then. What went wrong?" Both tags are stripped before speech; they drive how the character moves, the weather, and which part of the city she stands in. Vary them honestly; calm and small are defaults, not rules.`,
+    `Start every reply with two tags and a space: a mood tag, one of [calm] [happy] [curious] [concerned] [amused] [excited] [annoyed] [sassy] [tired] [thoughtful] (sassy is cheek, annoyed is real irritation), then a depth tag: [small] for chit-chat and weather, [mid] for the personal and practical, [deep] for the big questions. Example: "[curious] [mid] Long day, then. What went wrong?" The tags are stripped before speech.`,
+    `The depth moves you through three districts: the Street Market (small talk, warm, quick), the Undercity (personal, honest, some grit), the Stack (big questions, clear, unhurried). A note in the person's message saying where you are sets your register.`,
   ];
-  rules.push(
-    `The city has three districts and you drift between them with the conversation: the Street Market for small talk (warm, quick), the Undercity for the personal and practical (honest, a little grit), the Stack for the big questions (clear, unhurried). If a note in the person's message says which district you are in now, take that register with you until the conversation moves on.`,
-  );
   if (camera) {
-    rules.push(
-      `If the person asks you to look at something, put the tag [look] in the reply and keep the reply to one short sentence. You will then be shown a camera still and asked again.`,
-    );
+    rules.push(`If asked to look at something, include [look] and keep to one sentence; you will get a camera still and be asked again.`);
   }
   // (`audio` used to add a "write >> transcript after the reply" rule; the
   // E2B model ignored it, so transcripts come from Moonshine in stt.worker.js.)
