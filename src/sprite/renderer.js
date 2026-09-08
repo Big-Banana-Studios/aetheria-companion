@@ -219,6 +219,14 @@ export class SpriteRenderer {
     this.fpsOverride = st.fps ?? null;
     this.particlesOn = !!st.particles;
     this.aura.target = STATE_GLOW[name] ?? 0.2;
+    // A gesture with a floor (a drag: three puffs at least) survives the
+    // turn's own state changes; anything else - listening, a flinch, a nap -
+    // takes over at once.
+    const step = this.seq?.steps[this.seq.i];
+    const turnState = name === "idle" || name === "speaking" || name === "thinking";
+    const keep =
+      step && turnState && ((step.min != null && this.seq.t < step.min) || (step.until === "turn_end" && name !== "idle"));
+    if (keep) return;
     this.seq = null;
     this.frameSubset = null;
     if (name === "idle_long") {
@@ -363,8 +371,9 @@ export class SpriteRenderer {
       seq.dur = Math.abs(to - from) / this._speed(clip);
     } else {
       seq.x1 = this.x + (step.dx || 0) * (seq.side < 0 ? -1 : 1);
-      seq.dur = step.dur != null ? step.dur : nFrames / fps;
+      seq.dur = step.min != null ? step.min : step.dur != null ? step.dur : nFrames / fps;
     }
+    seq.until = step.until || null;
     seq.hold = step.hold ?? 0;
     seq.holding = false;
   }
@@ -400,7 +409,10 @@ export class SpriteRenderer {
       if (!seq.holding) {
         const k = seq.dur > 0 ? Math.min(1, seq.t / seq.dur) : 1;
         this.x = Math.round(seq.x0 + (seq.x1 - seq.x0) * k);
-        if (seq.t >= seq.dur) {
+        const turnGoing = this.state === "speaking" || this.state === "thinking";
+        if (seq.t >= seq.dur && seq.until === "turn_end" && turnGoing) {
+          // the floor is met, but her turn is not over: keep going
+        } else if (seq.t >= seq.dur) {
           if (seq.hold === -1) seq.holding = true; // until the state changes
           else if (seq.hold > 0) {
             seq.holding = true;

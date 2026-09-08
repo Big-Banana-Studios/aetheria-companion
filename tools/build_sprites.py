@@ -634,9 +634,11 @@ def build(packs, out, frame_px, char_h, feet_y, talk):
         # positions ("offleft" = beyond the left edge, "sign" = within reach
         # of the nearer neon sign, 0 = the middle of the street) travelled at
         # the clip's own walking speed (cycle_px); `hit: "sign"` lands the
-        # blow on that sign at the clip's contact frame. A gesture that goes
-        # to a sign is mirrored (left/right clips swapped) when the sign is
-        # on her left.
+        # blow on that sign at the clip's contact frame; `min` is a floor on
+        # a step's length that survives a state change, and `until:
+        # "turn_end"` keeps a step going while she is still thinking or
+        # speaking. A gesture that goes to a sign is mirrored (left/right
+        # clips swapped) when the sign is on her left.
         "gestures": {
             "jump":     [{"clip": "jump_down"}],
             "bounce":   [{"clip": "jump_down", "fps": 16}],
@@ -652,7 +654,9 @@ def build(packs, out, frame_px, char_h, feet_y, talk):
             "enter":    [{"clip": "run_right", "from": "offleft", "to": 0}, {"clip": "idle_right", "dur": 0.2}],
             "pace":     [{"clip": "walk_right", "dur": 0.7, "dx": 26}, {"clip": "idle_right", "dur": 0.5},
                          {"clip": "walk_left", "dur": 0.7, "dx": -26}],
-            "drag":     [{"clip": "smoke_right", "dur": 2.4}],
+            # a drag is never a token gesture: at least three puffs (three
+            # loops of the clip), and it goes on while her turn is still going
+            "drag":     [{"clip": "smoke_right", "min": 5.2, "until": "turn_end"}],
             "lookaway": [{"clip": "idle_northeast", "dur": 1.6}],
             "lookup":   [{"clip": "idle_up", "dur": 1.5}],
             "glance":   [{"clip": "idle_southeast", "dur": 1.2}],

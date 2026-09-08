@@ -91,7 +91,9 @@ async function loadGemma() {
   try {
     await attempt(dtype);
   } catch (e) {
-    if (dtype === "q4f16") {
+    // only a half-precision problem is answered with the q4 files; anything
+    // else would just add a second 4 GB download to the same failure
+    if (dtype === "q4f16" && /f16|float16|half/i.test(e.message)) {
       post({ type: "info", message: `q4f16 failed (${e.message}); falling back to q4` });
       await attempt("q4");
     } else throw e;
@@ -124,7 +126,7 @@ async function loadText(withLfm) {
   try {
     await attempt(dtype);
   } catch (e) {
-    if (dtype === "q4f16") {
+    if (dtype === "q4f16" && /f16|float16|half/i.test(e.message)) {
       post({ type: "info", message: `q4f16 failed (${e.message}); falling back to q4` });
       await attempt("q4");
     } else throw e;

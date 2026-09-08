@@ -43,7 +43,7 @@ Gestures (played over a state, from `courier.json` → `gestures`):
 | `reach` / `listen_long` | `resonate_down` 4 f, held | concerned / you have talked for 5 s |
 | `lean` / `glance` | `idle_southeast`, `idle_southwest` | curious / idle fidget / camera still attached |
 | `kneel` | `sleep_down` frames 0–1, held | tired |
-| `drag` | `smoke_right` 2.4 s | thoughtful / thinking fidget |
+| `drag` | `smoke_right`, at least 5.2 s (three puffs) and while her turn lasts | thoughtful / thinking fidget |
 | `pace` | `walk_right` 26 px, `idle_right`, `walk_left` back | thinking fidget |
 | `lookaway` / `lookup` | `idle_northeast` / `idle_up` | thinking and idle fidgets |
 | `flinch` / `startle` | `hurt_down` (recoil frames) | interrupted, error, woken from a nap |

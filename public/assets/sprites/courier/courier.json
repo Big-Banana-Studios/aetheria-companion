@@ -203,7 +203,8 @@
   "drag": [
    {
     "clip": "smoke_right",
-    "dur": 2.4
+    "min": 5.2,
+    "until": "turn_end"
    }
   ],
   "lookaway": [

@@ -191,7 +191,8 @@ device experiments) are accepted; `--keep` leaves Chrome and the server up.
   aura, the rain, and a gesture played as her voice starts: happy jumps,
   excited dashes across and back, annoyed throws a punch, concerned reaches
   out (the resonate pose), curious leans to look, tired kneels, amused
-  bounces, thoughtful takes a drag. **Sassy** walks her over to the nearer
+  bounces, thoughtful takes a drag (at least three puffs, and for as long as
+  her turn lasts). **Sassy** walks her over to the nearer
   neon sign at her own walking speed, lines her up, and lands the side punch
   on its contact frame: the sign flares, shakes, tears into offset slices,
   sheds sparks, the screen jolts a pixel, and the sign sputters for a few
