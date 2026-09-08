@@ -72,6 +72,7 @@ function stagePreview(q) {
   $("stage").hidden = false;
   if (q.get("regime")) settings.regime = q.get("regime");
   if (q.get("scene") === "0") settings.scene = false;
+  if (q.get("storm") === "0") settings.storm = false;
   applyRegime();
   renderer.resize();
   renderer.start();
@@ -85,6 +86,23 @@ function stagePreview(q) {
     // the conversation changed depth: she walks off to the other district and back in
     const to = q.get("travel");
     setTimeout(() => renderer.travel(to, REGIMES[to]?.colour || "#ff4f8b").then(() => showRegimeChip({ ...REGIMES[to], source: "preview" })), 1200);
+  }
+  if (q.has("music")) {
+    // the ambience needs a gesture: first tap starts it
+    import("./audio/music.js").then(({ Music }) => {
+      const start = () => {
+        const ctx = new AudioContext();
+        const m = new Music(ctx);
+        m.setVolume((Number(q.get("music")) || 40) / 100);
+        m.setRegime(renderer.scene.regime);
+        renderer.scene.onStrike = (near) => m.thunder(near);
+        m.start();
+        setInterval(() => m.setRain(renderer.scene.rain), 250);
+        window.__music = m;
+        $("state-chip").textContent += " · music";
+      };
+      addEventListener("pointerdown", start, { once: true });
+    });
   }
   if (q.has("voice")) {
     // a fake voice, so the mouth, the aura and the sign can be seen responding
@@ -151,6 +169,7 @@ function applyRegime() {
   renderer?.setAuraColour(r.colour);
   renderer?.setRegime(r.name);
   renderer?.setSceneEnabled(settings.scene !== false);
+  renderer?.setStorm(settings.storm !== false);
   showRegimeChip(r);
 }
 
@@ -458,6 +477,10 @@ function openSettings() {
   $("set-barge").checked = !!settings.bargeIn;
   $("set-smoke").checked = !!settings.smokeBreaks;
   $("set-initiate").checked = settings.initiate !== false;
+  $("set-music").checked = settings.music !== false;
+  $("set-music-vol").value = settings.musicVolume ?? 40;
+  $("set-music-vol-val").textContent = settings.musicVolume ?? 40;
+  $("set-storm").checked = settings.storm !== false;
   $("set-scene").checked = settings.scene !== false;
   $("set-sampling").checked = !!settings.sampling;
   $("set-length").value = settings.replyLength || "auto";
@@ -507,6 +530,23 @@ function bindSettings() {
   $("set-initiate").addEventListener("change", (e) => {
     settings.initiate = e.target.checked;
     saveSettings(settings);
+  });
+  $("set-music").addEventListener("change", (e) => {
+    settings.music = e.target.checked;
+    saveSettings(settings);
+    companion?.applyAmbience();
+  });
+  $("set-music-vol").addEventListener("input", (e) => {
+    settings.musicVolume = Number(e.target.value);
+    $("set-music-vol-val").textContent = settings.musicVolume;
+    saveSettings(settings);
+    companion?.applyAmbience();
+  });
+  $("set-storm").addEventListener("change", (e) => {
+    settings.storm = e.target.checked;
+    saveSettings(settings);
+    if (companion) companion.applyAmbience();
+    else renderer?.setStorm(settings.storm);
   });
   $("set-scene").addEventListener("change", (e) => {
     settings.scene = e.target.checked;

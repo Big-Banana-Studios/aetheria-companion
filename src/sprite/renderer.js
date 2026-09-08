@@ -115,6 +115,10 @@ export class SpriteRenderer {
     this.scene.enabled = !!on;
   }
 
+  setStorm(on) {
+    this.scene.storm = !!on;
+  }
+
   setMood(mood) {
     this.mood = this.moods[mood] ? mood : "calm";
     this.scene.setMood(this.mood);

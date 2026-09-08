@@ -4,6 +4,7 @@
 
 import { Mic } from "./audio/mic.js";
 import { Player } from "./audio/player.js";
+import { Music } from "./audio/music.js";
 import { SentenceSplitter } from "./splitter.js";
 import { Memory } from "./memory.js";
 import { Timings } from "./debug.js";
@@ -138,6 +139,21 @@ export class Companion extends EventTarget {
   async unlockAudio() {
     await this.player.unlock();
     if (!this.mic.running) await this.mic.start();
+    if (!this.music) {
+      // the ambience shares the unlocked output context; it does not pass the voice analyser
+      this.music = new Music(this.player.ctx);
+      this.applyAmbience();
+      this.renderer.scene.onStrike = (near) => this.music.thunder(near);
+    }
+  }
+
+  /** Settings → the synth bed and the rain sound. */
+  applyAmbience() {
+    this.renderer.setStorm(this.settings.storm !== false);
+    if (!this.music) return;
+    this.music.setEnabled(this.settings.music !== false);
+    this.music.setVolume((Number(this.settings.musicVolume) || 0) / 100);
+    this.music.setRainSound(this.settings.storm !== false);
   }
 
   /** Everything is loaded: start listening. She runs in. */
@@ -147,6 +163,8 @@ export class Companion extends EventTarget {
     this.vad?.postMessage({ type: "reset" });
     this.live = true; // speech is acted on from here; before this the mic only warms the VAD
     this._setState("idle");
+    this.music?.setRegime(this.renderer.scene.regime);
+    this.music?.start();
     this.renderer.enter();
     this._tick();
   }
@@ -189,6 +207,7 @@ export class Companion extends EventTarget {
     this.dispatchEvent(new CustomEvent("regime", { detail: regime }));
     const cur = this.current;
     const walk = this.renderer.travel(regime, REGIMES[regime].colour);
+    walk.then(() => this.music?.setRegime(regime));
     if (cur && !cur.finished) {
       cur.travel = walk.then(() => {
         cur.travel = null;
@@ -460,6 +479,7 @@ export class Companion extends EventTarget {
       const tags = [...head[0].matchAll(/\[([a-z]+)\]/gi)].map((m) => m[1].toLowerCase());
       cur.mood = tags.find((t) => MOODS.includes(t)) || "calm";
       this.renderer.setMood(cur.mood);
+      this.music?.setMood(cur.mood);
       cur.depth = tags.find((t) => t in DEPTHS) || null;
       if (cur.depth) this._topic(cur, DEPTHS[cur.depth]);
     }
@@ -563,6 +583,7 @@ export class Companion extends EventTarget {
     this.dispatchEvent(new CustomEvent("regime", { detail: regime }));
     cur.travel = this.renderer.travel(regime, REGIMES[regime].colour).then(() => {
       cur.travel = null;
+      this.music?.setRegime(regime); // the key changes as the street does
       for (const m of cur.held.splice(0)) this._enqueue(cur, m);
     });
   }
@@ -685,6 +706,7 @@ export class Companion extends EventTarget {
       if (!this.mic.running) return;
       // 30 fps mouth + listening glow
       this.renderer.setMouth(this.player.playing ? this.player.level() : 0);
+      this.music?.setRain(this.renderer.scene.rain);
       if (this.state === "listening") this.renderer.setListenLevel(Math.min(1, this.mic.level() * 4));
       // she speaks up herself when it has been quiet, a few times at most
       if (this.live && this.state === "idle" && !this.paused && this.settings.initiate !== false && this.initiations < 3) {
@@ -712,6 +734,7 @@ export class Companion extends EventTarget {
     if (name === "idle") this.idleSince = performance.now();
     if (name === "idle" || name === "listening") this.quietSince = performance.now();
     this.renderer.setState(name);
+    this.music?.setState(name);
     clearTimeout(this._listenTimer);
     if (name === "listening") {
       const after = (this.renderer.m.states.listening?.long_after ?? 5) * 1000;

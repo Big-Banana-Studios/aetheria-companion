@@ -263,6 +263,23 @@ device experiments) are accepted; `--keep` leaves Chrome and the server up.
   and looks around (all four drawn directions plus mirrors); if the quiet
   goes on another four minutes she lies down and sleeps, facing whichever
   way. Any speech wakes her. Both under one switch in Settings.
+- **Ambience.** A generative cyberpunk synth bed, made of Web Audio nodes
+  only (nothing to download): three detuned-saw pad voices through a
+  breathing low-pass, a sine drone on the root, pentatonic plucks through a
+  dotted-eighth feedback delay, under a generated reverb. The chord
+  progression and brightness follow the district (the Undercity low and
+  dark, the Market warm, the Stack cold and bright) and change as she walks
+  in; her mood sets the pluck rate and the filter. It ducks under her voice
+  and further while the mic is listening so the phone's speaker does not
+  talk to the VAD. The rain has a sound too, filtered noise that follows
+  the storm, and lightning brings a low rumble. Settings → Ambience has two
+  switches: the synth bed (with a volume), and the rain storm, which is the
+  rain, the gusts, the lightning and their sound together; the street stays
+  either way. Preview with `?stage&music=40` (first tap starts it) and
+  `?stage&storm=0` for a dry night.
+- **More rain.** The storm's base density is higher, gusts swell it to a
+  downpour for ten to twenty seconds every half minute to minute and a half,
+  strikes come every ten to forty seconds, and even the Stack gets wet now.
 - **Home screen:** the page ships a web manifest and icons cut from Mira's
   portrait, so Chrome's "Add to Home screen" gives a full-screen portrait app.
 - **Settings:** voice and speed, mic sensitivity, listening mode, barge-in,

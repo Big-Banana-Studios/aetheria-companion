@@ -690,17 +690,18 @@ def build(packs, out, frame_px, char_h, feet_y, talk):
         # src/scene/scene.js; the tags themselves are asked for in
         # src/persona.js. Edit here, not in code.
         "moods": {
-            "calm":       {"gesture": None,     "glow": 1.0,  "breathe": 1.6, "rain": 0.50},
-            "happy":      {"gesture": "jump",   "glow": 1.3,  "breathe": 2.3, "rain": 0.30},
-            "curious":    {"gesture": "lean",   "glow": 1.1,  "breathe": 1.9, "rain": 0.50},
-            "concerned":  {"gesture": "reach",  "glow": 0.7,  "breathe": 1.0, "rain": 0.90},
-            "amused":     {"gesture": "bounce", "glow": 1.2,  "breathe": 2.0, "rain": 0.35},
-            "excited":    {"gesture": "dash",   "glow": 1.35, "breathe": 2.6, "rain": 0.45},
-            "annoyed":    {"gesture": "punch",  "glow": 0.9,  "breathe": 2.2, "rain": 0.75},
+            # rain: 0..1 base density (the scene scales it by district, state and gusts)
+            "calm":       {"gesture": None,     "glow": 1.0,  "breathe": 1.6, "rain": 0.75},
+            "happy":      {"gesture": "jump",   "glow": 1.3,  "breathe": 2.3, "rain": 0.50},
+            "curious":    {"gesture": "lean",   "glow": 1.1,  "breathe": 1.9, "rain": 0.70},
+            "concerned":  {"gesture": "reach",  "glow": 0.7,  "breathe": 1.0, "rain": 1.10},
+            "amused":     {"gesture": "bounce", "glow": 1.2,  "breathe": 2.0, "rain": 0.55},
+            "excited":    {"gesture": "dash",   "glow": 1.35, "breathe": 2.6, "rain": 0.65},
+            "annoyed":    {"gesture": "punch",  "glow": 0.9,  "breathe": 2.2, "rain": 1.00},
             # sass: she walks over and hits a sign, and the sign takes it badly
-            "sassy":      {"gesture": "punch_sign", "glow": 1.15, "breathe": 2.4, "rain": 0.55},
-            "tired":      {"gesture": "kneel",  "glow": 0.6,  "breathe": 0.9, "rain": 0.55},
-            "thoughtful": {"gesture": "drag",   "glow": 0.85, "breathe": 1.3, "rain": 0.60},
+            "sassy":      {"gesture": "punch_sign", "glow": 1.15, "breathe": 2.4, "rain": 0.80},
+            "tired":      {"gesture": "kneel",  "glow": 0.6,  "breathe": 0.9, "rain": 0.75},
+            "thoughtful": {"gesture": "drag",   "glow": 0.85, "breathe": 1.3, "rain": 0.85},
         },
         # Sequences of clips. `dur` plays a looping clip for that long, a
         # one-shot plays through; `hold` keeps the last frame (-1 = until the

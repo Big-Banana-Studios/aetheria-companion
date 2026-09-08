@@ -50,7 +50,7 @@ const LOOK = {
     signR: [255, 79, 216],
     lamp: [55, 230, 240],
     puddles: 2,
-    rainK: 0.55,
+    rainK: 0.75,
     props: "stack",
   },
 };
@@ -146,6 +146,11 @@ export class Scene {
     this.charH = 144;
     this.sparks = [];
     this.shake = 0;
+    this.storm = true; // off: a dry night on the same street
+    this.gust = 1; // a downpour now and then
+    this.gustUntil = 0;
+    this.nextGust = 20 + Math.random() * 40;
+    this.onStrike = null; // (near) => void, for the thunder
   }
 
   // ------------------------------------------------------------ adaptation
@@ -182,6 +187,7 @@ export class Scene {
   strike(near = 1) {
     this.flashT = 0;
     this.flashNear = clamp(near, 0, 1);
+    this.onStrike?.(this.flashNear);
   }
 
   /**
@@ -474,7 +480,7 @@ export class Scene {
 
   _seedRain() {
     const area = this.vw * this.vh;
-    const per = Math.max(8, Math.round(area / 1000));
+    const per = Math.max(10, Math.round(area / 720));
     for (let i = 0; i < 3; i++) {
       const count = Math.round(per * (0.55 + 0.3 * i));
       const arr = [];
@@ -498,10 +504,17 @@ export class Scene {
     this.t += dt;
     if (!this.enabled) return;
     if (new Date().getHours() !== this.hour) this._generate();
-    // the storm follows her mood, eases in
-    const base = this.moodRain[this.mood] ?? 0.5;
-    const stateK = { listening: 0.75, asleep: 0.55, error: 1.3, idle_long: 0.9 }[this.state] ?? 1;
-    const want = clamp(base * this.look.rainK * stateK, 0.05, 1.3);
+    // the storm follows her mood, eases in; now and then a gust becomes a downpour
+    this.nextGust -= dt;
+    if (this.nextGust <= 0) {
+      this.gustUntil = this.t + 8 + Math.random() * 14;
+      this.nextGust = 25 + Math.random() * 60;
+    }
+    const gustWant = this.t < this.gustUntil ? 1.7 : 1;
+    this.gust += (gustWant - this.gust) * Math.min(1, dt * 0.35);
+    const base = this.moodRain[this.mood] ?? 0.75;
+    const stateK = { listening: 0.8, asleep: 0.6, error: 1.3, idle_long: 0.95 }[this.state] ?? 1;
+    const want = this.storm ? clamp(base * this.look.rainK * stateK * this.gust, 0.08, 1.6) : 0;
     this.rain += (want - this.rain) * Math.min(1, dt * 0.5);
     // the lamp comes up when she listens
     const lampWant = this.state === "listening" ? 1.35 + this.listen * 0.4 : this.state === "asleep" ? 0.6 : 1;
@@ -509,7 +522,7 @@ export class Scene {
     // rain
     for (let i = 0; i < 3; i++) {
       const arr = this.streaks[i];
-      const active = Math.round(arr.length * clamp(this.rain, 0, 1.3));
+      const active = Math.round(arr.length * clamp(this.rain, 0, 1.6) / 1.6);
       for (let j = 0; j < arr.length; j++) {
         const d = arr[j];
         if (j >= active) continue;
@@ -539,10 +552,10 @@ export class Scene {
       this.flashT += dt;
       if (this.flashT > 1.1) this.flashT = -1;
     }
-    this.nextStrike -= dt * (0.5 + this.rain);
+    if (this.storm) this.nextStrike -= dt * (0.5 + this.rain);
     if (this.nextStrike <= 0) {
       this.strike(Math.random() * Math.random());
-      this.nextStrike = 18 + Math.random() * 45;
+      this.nextStrike = 10 + Math.random() * 30;
     }
     // signs: flicker on the ones that flicker, more when she thinks; the warm one follows her voice;
     // a hit one flares, then sputters for a while
@@ -733,8 +746,8 @@ export class Scene {
     // rain: three depths, slanted, bright heads leading downward
     for (let i = 0; i < 3; i++) {
       const arr = this.streaks[i];
-      const active = Math.round(arr.length * clamp(this.rain, 0, 1.3));
-      const a = 0.26 * (0.6 + i * 0.34) * clamp(0.4 + this.rain * 0.8, 0.3, 1.1);
+      const active = Math.round(arr.length * clamp(this.rain, 0, 1.6) / 1.6);
+      const a = 0.26 * (0.6 + i * 0.34) * clamp(0.45 + this.rain * 0.6, 0.35, 1.1);
       const tail = rgb(STREAK, a * 0.55);
       const head = rgb(mix(STREAK, [255, 255, 255], 0.35), a);
       for (let j = 0; j < active; j++) {
