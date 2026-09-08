@@ -94,6 +94,7 @@ function stagePreview(q) {
         const ctx = new AudioContext();
         const m = new Music(ctx);
         m.setVolume((Number(q.get("music")) || 40) / 100);
+        m.setRainVolume((Number(q.get("stormvol")) || 50) / 100);
         m.setRegime(renderer.scene.regime);
         renderer.scene.onStrike = (near) => m.thunder(near);
         m.start();
@@ -481,6 +482,8 @@ function openSettings() {
   $("set-music-vol").value = settings.musicVolume ?? 40;
   $("set-music-vol-val").textContent = settings.musicVolume ?? 40;
   $("set-storm").checked = settings.storm !== false;
+  $("set-storm-vol").value = settings.stormVolume ?? 50;
+  $("set-storm-vol-val").textContent = settings.stormVolume ?? 50;
   $("set-scene").checked = settings.scene !== false;
   $("set-sampling").checked = !!settings.sampling;
   $("set-length").value = settings.replyLength || "auto";
@@ -547,6 +550,12 @@ function bindSettings() {
     saveSettings(settings);
     if (companion) companion.applyAmbience();
     else renderer?.setStorm(settings.storm);
+  });
+  $("set-storm-vol").addEventListener("input", (e) => {
+    settings.stormVolume = Number(e.target.value);
+    $("set-storm-vol-val").textContent = settings.stormVolume;
+    saveSettings(settings);
+    companion?.applyAmbience();
   });
   $("set-scene").addEventListener("change", (e) => {
     settings.scene = e.target.checked;

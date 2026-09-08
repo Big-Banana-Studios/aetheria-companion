@@ -40,6 +40,7 @@ export const DEFAULTS = {
   music: true, // the synth bed
   musicVolume: 40, // 0..100
   storm: true, // the rain, the gusts, the lightning, and their sound (the street stays)
+  stormVolume: 50, // 0..100: the storm's sound
   brain: "gemma", // gemma | text | lab
   voice: "af_nicole", // the one that hits for her
   speed: 1.0,

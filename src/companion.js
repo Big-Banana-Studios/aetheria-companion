@@ -154,6 +154,7 @@ export class Companion extends EventTarget {
     this.music.setEnabled(this.settings.music !== false);
     this.music.setVolume((Number(this.settings.musicVolume) || 0) / 100);
     this.music.setRainSound(this.settings.storm !== false);
+    this.music.setRainVolume((Number(this.settings.stormVolume ?? 50) || 0) / 100);
   }
 
   /** Everything is loaded: start listening. She runs in. */

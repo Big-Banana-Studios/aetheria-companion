@@ -67,7 +67,9 @@ const MOOD = {
 // how far the bed sits under what matters
 const DUCK = { idle: 1.0, idle_long: 1.0, asleep: 0.55, listening: 0.22, thinking: 0.6, speaking: 0.28, interrupted: 0.25, error: 0.5 };
 
-const midi = (n) => 440 * Math.pow(2, (n - 69) / 12);
+// A4 = 432 Hz: the whole bed is tuned to it, pads, drone and plucks alike.
+export const A4 = 432;
+const midi = (n) => A4 * Math.pow(2, (n - 69) / 12);
 
 export class Music {
   /** @param {AudioContext} ctx  the output context, already unlocked by a gesture */
@@ -76,6 +78,7 @@ export class Music {
     this.enabled = true;
     this.rainOn = true;
     this.volume = 0.4;
+    this.rainVolume = 0.5; // the storm's own level: rain bed and thunder
     this.duck = 1;
     this.regime = "HEART";
     this.mood = "calm";
@@ -221,6 +224,12 @@ export class Music {
     this._level();
   }
 
+  /** 0..1: how loud the storm is, rain and thunder together (0.5 is the reference level). */
+  setRainVolume(v) {
+    this.rainVolume = Math.max(0, Math.min(1, v));
+    this._level();
+  }
+
   setState(state) {
     this.duck = DUCK[state] ?? 1;
     this._level();
@@ -252,7 +261,8 @@ export class Music {
     src.buffer = this.noise.buffer;
     const g = c.createGain();
     const t = c.currentTime + 0.15 + Math.random() * 0.25 * (1 - near);
-    const peak = 0.25 + 0.55 * near;
+    const peak = (0.25 + 0.55 * near) * (this.rainOn ? this.rainVolume * 2 : 0);
+    if (peak <= 0.001) return;
     g.gain.setValueAtTime(0, t);
     g.gain.linearRampToValueAtTime(peak, t + 0.12);
     g.gain.exponentialRampToValueAtTime(0.001, t + 1.8 + near * 1.2);
@@ -268,8 +278,8 @@ export class Music {
     const now = this.ctx.currentTime;
     const music = this.enabled && this.running ? this.volume * this.duck : 0;
     this.master.gain.setTargetAtTime(Math.min(1, music + 0.0001), now, 0.6);
-    // the rain sits on the master too, so it ducks with the music; its own level follows the storm
-    const rain = this.rainOn ? 0.035 + 0.075 * this.rain : 0;
+    // the rain sits on the master too, so it ducks with the music; its own level follows the storm and its slider
+    const rain = this.rainOn ? (0.07 + 0.15 * this.rain) * this.rainVolume : 0;
     this.rainGain.gain.setTargetAtTime(rain, now, 1.2);
     this.rainLfoGain.gain.setTargetAtTime(rain * 0.35, now, 1.2);
   }

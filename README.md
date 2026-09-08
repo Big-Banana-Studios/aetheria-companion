@@ -272,11 +272,12 @@ device experiments) are accepted; `--keep` leaves Chrome and the server up.
   in; her mood sets the pluck rate and the filter. It ducks under her voice
   and further while the mic is listening so the phone's speaker does not
   talk to the VAD. The rain has a sound too, filtered noise that follows
-  the storm, and lightning brings a low rumble. Settings → Ambience has two
-  switches: the synth bed (with a volume), and the rain storm, which is the
-  rain, the gusts, the lightning and their sound together; the street stays
-  either way. Preview with `?stage&music=40` (first tap starts it) and
-  `?stage&storm=0` for a dry night.
+  the storm, and lightning brings a low rumble. The bed is tuned to
+  A4 = 432 Hz. Settings → Ambience has two switches, each with a volume: the
+  synth bed, and the rain storm, which is the rain, the gusts, the lightning
+  and their sound together; the street stays either way. Preview with
+  `?stage&music=40&stormvol=50` (first tap starts it) and `?stage&storm=0`
+  for a dry night.
 - **More rain.** The storm's base density is higher, gusts swell it to a
   downpour for ten to twenty seconds every half minute to minute and a half,
   strikes come every ten to forty seconds, and even the Stack gets wet now.
