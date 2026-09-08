@@ -1,0 +1,699 @@
+// The conversation: mic -> VAD -> model -> sentences -> TTS -> speaker, with
+// the sprite and the transcript following along. The main thread only does
+// audio I/O, the canvas and this orchestration; all model work is in workers.
+
+import { Mic } from "./audio/mic.js";
+import { Player } from "./audio/player.js";
+import { SentenceSplitter } from "./splitter.js";
+import { Memory } from "./memory.js";
+import { Timings } from "./debug.js";
+import { buildSystemPrompt, DEFAULT_PERSONA, MOODS } from "./persona.js";
+import { streamChat } from "./lab.js";
+import { vadThresholds } from "./settings.js";
+
+const MOOD_TAG = /^\s*(?:\[([a-z]+)\]\s*)+/i;
+const LOOK_TAG = /\[look\]/gi;
+
+export class Companion extends EventTarget {
+  /**
+   * @param {{settings: object, renderer: import('./sprite/renderer.js').SpriteRenderer}} o
+   */
+  constructor({ settings, renderer }) {
+    super();
+    this.settings = settings;
+    this.renderer = renderer;
+    this.memory = new Memory();
+    this.timings = new Timings();
+    this.state = "idle";
+    this.turnId = 0;
+    this.current = null;
+    this.ready = { vad: false, tts: false, llm: false };
+    this.voices = {};
+    this.pendingImage = null;
+    this.paused = false;
+    this.idleSince = performance.now();
+    this.camStream = null;
+    this.video = null;
+    this.dtype = "q4f16";
+    this.device = "webgpu";
+
+    this.mic = new Mic((chunk) => this.vad?.postMessage({ type: "audio", buffer: chunk }, [chunk.buffer]));
+    this.player = new Player({
+      onChunkStart: (id, seq) => this._onChunkStart(id, seq),
+      onDrained: () => this._onDrained(),
+    });
+    this._mouthTimer = 0;
+  }
+
+  // ------------------------------------------------------------ lifecycle
+
+  get brain() {
+    return this.settings.brain;
+  }
+
+  systemPrompt() {
+    const persona = this.settings.persona || DEFAULT_PERSONA;
+    return buildSystemPrompt(persona, { audio: this.brain === "gemma", camera: this.brain === "gemma" });
+  }
+
+  /**
+   * Spawn the workers and load everything. Resolves when all three are ready.
+   * @param {{dtype: string, device: string}} o
+   */
+  async boot({ dtype = "q4f16", device = "webgpu" }) {
+    this.dtype = dtype;
+    this.device = device;
+    this.timings.info = { brain: this.brain, dtype, device };
+
+    this.vad = new Worker(new URL("./workers/vad.worker.js", import.meta.url), { type: "module" });
+    this.tts = new Worker(new URL("./workers/tts.worker.js", import.meta.url), { type: "module" });
+    this.llm = new Worker(new URL("./workers/llm.worker.js", import.meta.url), { type: "module" });
+    this.vad.onmessage = ({ data }) => this._onVad(data);
+    this.tts.onmessage = ({ data }) => this._onTts(data);
+    this.llm.onmessage = ({ data }) => this._onLlm(data);
+    // the full brain hears the audio itself; Moonshine writes the words down beside it
+    if (this.brain === "gemma") {
+      this.stt = new Worker(new URL("./workers/stt.worker.js", import.meta.url), { type: "module" });
+      this.stt.onmessage = ({ data }) => this._onStt(data);
+      this.ready.stt = false;
+    } else {
+      this.ready.stt = true;
+    }
+    for (const [name, w] of [["vad", this.vad], ["tts", this.tts], ["llm", this.llm], ...(this.stt ? [["stt", this.stt]] : [])]) {
+      w.onerror = (e) => {
+        const msg = `${name} worker: ${e.message || "failed to load (see the browser console)"}`;
+        this._error(msg);
+        if (!this.ready[name]) this._readyReject?.(new Error(msg));
+      };
+    }
+
+    const allReady = new Promise((resolve, reject) => {
+      this._readyResolve = resolve;
+      this._readyReject = reject;
+    });
+
+    this.vad.postMessage({ type: "load" });
+    this.tts.postMessage({
+      type: "load",
+      engine: this.settings.ttsEngine,
+      device,
+      voice: this.settings.voice,
+      speed: this.settings.speed,
+    });
+    this.llm.postMessage({
+      type: "load",
+      brain: this.brain,
+      dtype,
+      device,
+      deviceMap: this.settings.deviceMap || null,
+      system: this.systemPrompt(),
+      primer: this.memory.asMessages(12),
+    });
+    this.stt?.postMessage({ type: "load", device });
+    await allReady;
+  }
+
+  _checkReady() {
+    if (this.ready.vad && this.ready.tts && this.ready.llm && this.ready.stt && this._readyResolve) {
+      this._readyResolve();
+      this._readyResolve = null;
+      this.dispatchEvent(new CustomEvent("ready"));
+    }
+  }
+
+  /**
+   * Call inside the user's tap, before the long download: mobile browsers
+   * only let an AudioContext run when it was started by a gesture.
+   */
+  async unlockAudio() {
+    await this.player.unlock();
+    if (!this.mic.running) await this.mic.start();
+  }
+
+  /** Everything is loaded: start listening. She runs in. */
+  async begin() {
+    await this.unlockAudio();
+    this.applyListeningSettings();
+    this.vad?.postMessage({ type: "reset" });
+    this.live = true; // speech is acted on from here; before this the mic only warms the VAD
+    this._setState("idle");
+    this.renderer.enter();
+    this._tick();
+  }
+
+  applyListeningSettings() {
+    const th = vadThresholds(this.settings.sensitivity);
+    this.vad?.postMessage({
+      type: "config",
+      config: { start: th.start, exit: th.exit, barge: th.barge, mode: this.settings.mode },
+    });
+    this.dispatchEvent(new CustomEvent("mode", { detail: this.settings.mode }));
+  }
+
+  setVoice(voice) {
+    this.settings.voice = voice;
+    this.tts?.postMessage({ type: "set_voice", voice });
+  }
+
+  setSpeed(speed) {
+    this.settings.speed = speed;
+    this.tts?.postMessage({ type: "set_speed", speed });
+  }
+
+  /** Persona changed: the model gets a fresh context primed from memory. */
+  resetContext() {
+    this.llm?.postMessage({ type: "reset", system: this.systemPrompt(), primer: this.memory.asMessages(12) });
+  }
+
+  clearMemory() {
+    this.memory.clear();
+    this.llm?.postMessage({ type: "reset", system: this.systemPrompt(), primer: [] });
+    this.dispatchEvent(new CustomEvent("cleared"));
+  }
+
+  /** Pause/resume listening (hands-free mode). */
+  setPaused(p) {
+    this.paused = p;
+    this.vad?.postMessage({ type: "reset" });
+    this.dispatchEvent(new CustomEvent("paused", { detail: p }));
+  }
+
+  pttDown() {
+    if (this.state === "speaking" || this.state === "thinking") this.interrupt();
+    this.vad?.postMessage({ type: "ptt_down" });
+  }
+
+  pttUp() {
+    this.vad?.postMessage({ type: "ptt_up" });
+  }
+
+  /** Stop her mid-sentence. */
+  interrupt() {
+    if (!this.current || this.current.finished) return;
+    this.current.cancelled = true;
+    this.current.controller?.abort();
+    this.llm.postMessage({ type: "interrupt" });
+    this.tts.postMessage({ type: "cancel" });
+    this.player.stop();
+    this.renderer.pulse(1.4);
+    this.renderer.setState("interrupted", { then: "listening" });
+    this.state = "listening";
+    this.dispatchEvent(new CustomEvent("state", { detail: "interrupted" }));
+  }
+
+  // ------------------------------------------------------------ camera
+
+  async toggleCamera(videoEl) {
+    if (this.camStream) {
+      this.camStream.getTracks().forEach((t) => t.stop());
+      this.camStream = null;
+      this.video = null;
+      return false;
+    }
+    this.camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 640 } }, audio: false });
+    videoEl.srcObject = this.camStream;
+    this.video = videoEl;
+    await videoEl.play().catch(() => {});
+    return true;
+  }
+
+  /** Grab a still; it rides along with the next turn. She leans in to look. */
+  snap() {
+    const img = this._captureFrame();
+    if (!img) return false;
+    this.pendingImage = img;
+    if (this.state === "idle") this.renderer.gesture("lean");
+    this.dispatchEvent(new CustomEvent("toast", { detail: "attached to your next turn" }));
+    return true;
+  }
+
+  _captureFrame() {
+    const v = this.video;
+    if (!v || !v.videoWidth) return null;
+    const max = 512;
+    const k = Math.min(1, max / Math.max(v.videoWidth, v.videoHeight));
+    const w = Math.round(v.videoWidth * k);
+    const h = Math.round(v.videoHeight * k);
+    const c = document.createElement("canvas");
+    c.width = w;
+    c.height = h;
+    const cx = c.getContext("2d");
+    cx.translate(w, 0);
+    cx.scale(-1, 1); // un-mirror the selfie view
+    cx.drawImage(v, 0, 0, w, h);
+    const d = cx.getImageData(0, 0, w, h);
+    return { data: d.data, width: w, height: h };
+  }
+
+  // ------------------------------------------------------------ the turn
+
+  _turn({ audio = null, seconds = 0, image = null, text = null }) {
+    if (this.brain === "gemma" && !audio && !image && !text) return;
+    const id = ++this.turnId;
+    this.timings.begin(id);
+    this.timings.mark("vad_end");
+    const cur = {
+      id,
+      raw: "",
+      fed: 0,
+      spoken: "",
+      mood: null,
+      look: false,
+      transcript: null,
+      seq: 0,
+      sentences: [], // text handed to TTS, by seq
+      spokenSeq: -1, // the last sentence whose audio has started
+      llmDone: false,
+      audioQueued: 0,
+      cancelled: false,
+      finished: false,
+      hadImage: !!image,
+      hadAudio: !!audio,
+      controller: null,
+    };
+    cur.splitter = new SentenceSplitter((sentence) => this._say(cur, sentence));
+    this.current = cur;
+
+    const userTurn = this.memory.push({ id, role: "user", text: text || "", audioSeconds: seconds, image: !!image });
+    cur.userTurn = userTurn;
+    this.dispatchEvent(
+      new CustomEvent("line", {
+        detail: { id, role: "user", text: text || (audio ? `… ${seconds.toFixed(1)} s` : ""), pending: !!audio && !text, image: !!image },
+      }),
+    );
+
+    this._setState("thinking");
+    if (this.brain === "lab") {
+      this._labTurn(cur, audio, text);
+      return;
+    }
+    if (audio && this.stt) {
+      // a copy: the original buffer is about to be handed to the model worker
+      const copy = audio.slice();
+      this.stt.postMessage({ type: "transcribe", id, audio: copy }, [copy.buffer]);
+    }
+    const msg = { type: "turn", id, audio, image, text, sampling: !!this.settings.sampling, primer: this.memory.asMessages(12) };
+    const transfer = [];
+    if (audio) transfer.push(audio.buffer);
+    if (image) transfer.push(image.data.buffer);
+    this.llm.postMessage(msg, transfer);
+    this.timings.mark("sent");
+  }
+
+  async _labTurn(cur, audio, text) {
+    try {
+      let userText = text || "";
+      if (audio) {
+        const t = await new Promise((resolve, reject) => {
+          cur.transcriptResolve = resolve;
+          cur.transcriptReject = reject;
+          this.llm.postMessage({ type: "transcribe", id: cur.id, audio }, [audio.buffer]);
+        });
+        userText = [t, text].filter(Boolean).join("\n");
+      }
+      if (cur.cancelled) return;
+      if (!userText.trim()) {
+        this._finish(cur, { blank: true });
+        return;
+      }
+      this.timings.mark("sent");
+      const messages = [{ role: "system", content: this.systemPrompt() }, ...this.memory.asMessages(12)];
+      cur.controller = new AbortController();
+      const lab = this.settings.lab;
+      const full = await streamChat({
+        url: lab.url,
+        model: lab.model || "default",
+        apiKey: lab.apiKey,
+        messages,
+        signal: cur.controller.signal,
+        sampling: !!this.settings.sampling,
+        onDelta: (piece) => this._onToken(cur.id, piece),
+      });
+      this._onDone({ id: cur.id, text: full, tokens: 0, interrupted: false });
+    } catch (e) {
+      if (cur.cancelled) return;
+      this._error(`Lab mode: ${e.message}`);
+      this._finish(cur, { error: true });
+    }
+  }
+
+  /** Model text so far -> what will be spoken (tags stripped, transcript held back). */
+  _process(raw) {
+    let s = raw.replace(/<\|channel>thought[\s\S]*?<channel\|>/g, "");
+    // leading mood tag(s)
+    const head = s.match(MOOD_TAG);
+    if (head) s = s.slice(head[0].length);
+    else if (/^\s*\[[^\]]{0,16}$/.test(s)) return { spoken: "", hold: true }; // tag still arriving
+    // [look]
+    s = s.replace(LOOK_TAG, "");
+    // transcript line: everything from a line starting with >> onward
+    const tr = s.search(/(^|\n)\s*>>/);
+    let transcript = null;
+    if (tr >= 0) {
+      transcript = s.slice(tr).replace(/^\s*>>\s*/, "").trim();
+      s = s.slice(0, tr);
+    } else {
+      // hold back a trailing line that might become the transcript marker, or a partial tag
+      s = s.replace(/\n\s*>?$/, "").replace(/\[[^\]]{0,6}$/, "");
+    }
+    return { spoken: s, transcript };
+  }
+
+  _onToken(id, piece) {
+    const cur = this.current;
+    if (!cur || cur.id !== id || cur.cancelled) return;
+    if (!cur.raw) this.timings.mark("first_token", id);
+    cur.raw += piece;
+    const head = cur.raw.match(MOOD_TAG);
+    if (head && !cur.mood) {
+      const tags = [...cur.raw.matchAll(/\[([a-z]+)\]/gi)].map((m) => m[1].toLowerCase());
+      cur.mood = tags.find((t) => MOODS.includes(t)) || "calm";
+      this.renderer.setMood(cur.mood);
+    }
+    if (LOOK_TAG.test(cur.raw)) cur.look = true;
+    LOOK_TAG.lastIndex = 0;
+    const { spoken, transcript } = this._process(cur.raw);
+    if (transcript != null) cur.transcript = transcript;
+    if (spoken.length > cur.fed) {
+      cur.splitter.push(spoken.slice(cur.fed));
+      cur.fed = spoken.length;
+    }
+    cur.spoken = spoken;
+    this._showHer(cur, true);
+  }
+
+  /** What she has said so far, and what is generated but not yet spoken. */
+  _saidSoFar(cur) {
+    return cur.sentences.slice(0, cur.spokenSeq + 1).join(" ");
+  }
+
+  _notYetSaid(cur) {
+    return [...cur.sentences.slice(cur.spokenSeq + 1), (cur.splitter?.buffer || "").trim()].filter(Boolean).join(" ");
+  }
+
+  /** The transcript line follows her VOICE: a sentence appears when its audio starts. */
+  _showHer(cur, streaming) {
+    this.dispatchEvent(
+      new CustomEvent("line", {
+        detail: { id: cur.id, role: "her", text: this._saidSoFar(cur), pending: this._notYetSaid(cur), streaming },
+      }),
+    );
+  }
+
+  _say(cur, sentence) {
+    if (cur.cancelled) return;
+    const text = sentence.replace(/\s+/g, " ").trim();
+    if (!text || !/[a-z0-9]/i.test(text)) return;
+    if (cur.seq === 0) this.timings.mark("first_sent", cur.id);
+    cur.audioQueued++;
+    cur.sentences[cur.seq] = text;
+    this.tts.postMessage({ type: "say", id: cur.id, seq: cur.seq++, text });
+  }
+
+  _onDone({ id, text, interrupted, tokens, blank }) {
+    const cur = this.current;
+    if (!cur || cur.id !== id) return;
+    this.timings.mark("done", id);
+    this.timings.count(id, tokens || 0, (text || "").length);
+    cur.llmDone = true;
+    if (!cur.cancelled) {
+      // final pass over the complete text (the streaming pass held bits back)
+      cur.raw = text || cur.raw;
+      const { spoken, transcript } = this._process(cur.raw);
+      if (transcript != null) cur.transcript = transcript;
+      if (spoken.length > cur.fed) cur.splitter.push(spoken.slice(cur.fed));
+      cur.fed = spoken.length;
+      cur.spoken = spoken;
+      cur.splitter.close();
+    }
+    // transcript of what the user said (gemma: from the model; others: already set)
+    if (cur.hadAudio && cur.transcript != null && cur.transcript !== "") {
+      this._setUserText(cur, cur.transcript);
+    }
+    if (cur.cancelled) {
+      // she was cut off: what she actually got out is what is remembered
+      const said = this._saidSoFar(cur).trim();
+      if (said) this.memory.push({ role: "assistant", text: said + " —", mood: cur.mood || "calm" });
+      this.dispatchEvent(new CustomEvent("line", { detail: { id, role: "her", text: said, pending: "", streaming: false, interrupted: true } }));
+    } else if (cur.spoken.trim()) {
+      this.memory.push({ role: "assistant", text: cur.spoken.trim() + (interrupted ? " —" : ""), mood: cur.mood || "calm" });
+      cur.interrupted = !!interrupted;
+      this._showHer(cur, false);
+    } else if (blank) {
+      this.dispatchEvent(new CustomEvent("line", { detail: { id, role: "sys", text: "didn't catch that" } }));
+    }
+    if (cur.audioQueued === 0 || cur.cancelled) this._finish(cur, { blank });
+    // else: _onDrained finishes the turn when the last chunk has played
+  }
+
+  _setUserText(cur, text) {
+    if (cur.userTurn) this.memory.amendLast("user", { text });
+    this.dispatchEvent(new CustomEvent("line", { detail: { id: cur.id, role: "user", text, pending: false } }));
+  }
+
+  _finish(cur, { blank = false, error = false } = {}) {
+    if (cur.finished) return;
+    cur.finished = true;
+    this.timings.mark("played", cur.id);
+    if (!cur.cancelled && cur.sentences.length) {
+      // everything queued has now been played: the whole line is "said"
+      cur.spokenSeq = cur.sentences.length - 1;
+      this.dispatchEvent(
+        new CustomEvent("line", { detail: { id: cur.id, role: "her", text: cur.spoken.trim(), pending: "", streaming: false, interrupted: !!cur.interrupted } }),
+      );
+    }
+    if (this.current === cur) this.current = null;
+    if (error) {
+      this.renderer.setState("error");
+      this.state = "error";
+      setTimeout(() => this.state === "error" && this._setState("idle"), 2500);
+      return;
+    }
+    if (!cur.cancelled) this._setState("idle");
+    this.renderer.setMood("calm");
+    // "[look]": she asked for the camera; give it to her and ask again
+    if (cur.look && !cur.cancelled && !cur.hadImage) {
+      const img = this._captureFrame();
+      if (img) {
+        this._turn({ image: img, text: "Here is the camera still you asked for. Say what you see, briefly." });
+      } else {
+        this.dispatchEvent(new CustomEvent("toast", { detail: "turn the camera on first (the ◉ button)" }));
+      }
+    }
+  }
+
+  // ------------------------------------------------------------ playback
+
+  _onChunkStart(id, seq) {
+    const cur = this.current;
+    if (!cur || cur.id !== id) return;
+    if (seq === 0) this.timings.mark("audible", id);
+    if (this.state !== "speaking") this._setState("speaking");
+    if (seq === 0) this.renderer.react(cur.mood || "calm"); // the mood's gesture, as her voice starts
+    this.renderer.nod();
+    this.renderer.pulse(0.8);
+    // the words of this sentence appear as she starts to say them
+    cur.spokenSeq = Math.max(cur.spokenSeq, seq);
+    this._showHer(cur, !cur.llmDone);
+  }
+
+  _onDrained() {
+    const cur = this.current;
+    if (!cur) return;
+    if (cur.llmDone) this._finish(cur);
+    else this._setState("thinking"); // generation outran playback; waiting on more
+  }
+
+  _tick() {
+    const step = () => {
+      if (!this.mic.running) return;
+      // 30 fps mouth + listening glow
+      this.renderer.setMouth(this.player.playing ? this.player.level() : 0);
+      if (this.state === "listening") this.renderer.setListenLevel(Math.min(1, this.mic.level() * 4));
+      // a smoke break after a long quiet spell, and a nap if it goes on
+      if (this.state === "idle" && this.settings.smokeBreaks) {
+        const quiet = (performance.now() - this.idleSince) / 1000;
+        const smoke = this.renderer.m.states.idle_long;
+        const nap = this.renderer.m.states.asleep;
+        if (nap?.clips?.length && quiet > (smoke?.after_seconds || 90) + (nap.after_seconds || 240)) {
+          if (this.renderer.state !== "asleep") this.renderer.setState("asleep");
+        } else if (smoke?.clips?.length && quiet > (smoke.after_seconds || 90)) {
+          if (this.renderer.state !== "idle_long") this.renderer.setState("idle_long");
+        }
+      }
+      this.dispatchEvent(new CustomEvent("tick"));
+      setTimeout(step, 33);
+    };
+    step();
+  }
+
+  _setState(name) {
+    this.state = name;
+    if (name === "idle") this.idleSince = performance.now();
+    this.renderer.setState(name);
+    clearTimeout(this._listenTimer);
+    if (name === "listening") {
+      const after = (this.renderer.m.states.listening?.long_after ?? 5) * 1000;
+      this._listenTimer = setTimeout(() => this.renderer.listenLong(), after);
+    }
+    this.vad?.postMessage({ type: "config", config: { playing: name === "speaking" || name === "thinking" } });
+    this.dispatchEvent(new CustomEvent("state", { detail: name }));
+  }
+
+  // ------------------------------------------------------------ worker messages
+
+  _onVad(m) {
+    switch (m.type) {
+      case "ready":
+        this.ready.vad = true;
+        this._checkReady();
+        break;
+      case "progress":
+        this.dispatchEvent(new CustomEvent("progress", { detail: m }));
+        break;
+      case "speech_start":
+        if (this.paused || !this.live) return;
+        if (this.state === "speaking" || this.state === "thinking") {
+          if (!this.settings.bargeIn && this.settings.mode !== "ptt") return;
+          this.interrupt();
+        } else {
+          this._setState("listening");
+        }
+        break;
+      case "speech_end":
+        if (this.paused || !this.live) return;
+        if (this.state !== "listening") {
+          // a barge-in was refused (barge-in off) or listening was paused: ignore
+          if (this.state === "speaking" || this.state === "thinking") return;
+        }
+        this._turn({ audio: m.audio, seconds: m.seconds, image: this.pendingImage });
+        this.pendingImage = null;
+        this.dispatchEvent(new CustomEvent("snapUsed"));
+        break;
+      case "speech_cancel":
+        if (this.live && this.state === "listening") this._setState("idle");
+        break;
+      case "prob":
+        this.dispatchEvent(new CustomEvent("prob", { detail: m.p }));
+        break;
+      case "error":
+        this._error(m.message);
+        if (!this.ready.vad) this._readyReject?.(new Error(m.message));
+        break;
+    }
+  }
+
+  _onTts(m) {
+    switch (m.type) {
+      case "ready":
+        this.ready.tts = true;
+        this.voices = m.voices || {};
+        this.settings.voice = m.voice || this.settings.voice;
+        this.timings.info.tts = `${m.engine} ${m.device}/${m.dtype}`;
+        this._checkReady();
+        break;
+      case "progress":
+        this.dispatchEvent(new CustomEvent("progress", { detail: m }));
+        break;
+      case "info":
+        this.dispatchEvent(new CustomEvent("info", { detail: m.message }));
+        break;
+      case "audio": {
+        const cur = this.current;
+        if (!cur || cur.id !== m.id || cur.cancelled) return;
+        if (m.seq === 0) this.timings.mark("first_audio", m.id);
+        this.player.enqueue(m.id, m.seq, m.audio);
+        break;
+      }
+      case "error":
+        if (m.id != null) {
+          const cur = this.current;
+          if (cur && cur.id === m.id) {
+            cur.audioQueued = Math.max(0, cur.audioQueued - 1);
+            if (cur.llmDone && cur.audioQueued === 0 && !this.player.playing) this._finish(cur);
+          }
+        }
+        this._error(m.message);
+        if (!this.ready.tts) this._readyReject?.(new Error(m.message));
+        break;
+    }
+  }
+
+  _onStt(m) {
+    switch (m.type) {
+      case "ready":
+        this.ready.stt = true;
+        this._checkReady();
+        break;
+      case "progress":
+        this.dispatchEvent(new CustomEvent("progress", { detail: m }));
+        break;
+      case "transcript": {
+        // the turn may already be over; the words still belong to it
+        const turn = this.memory.turns.find((t) => t.id === m.id) || (this.current?.id === m.id ? this.current.userTurn : null);
+        if (m.text) {
+          if (turn) Object.assign(turn, { text: m.text });
+          this.memory.save();
+          this.dispatchEvent(new CustomEvent("line", { detail: { id: m.id, role: "user", text: m.text, pending: false } }));
+        }
+        this.timings.mark("transcript", m.id);
+        break;
+      }
+      case "error":
+        this._error(m.message);
+        if (!this.ready.stt) this._readyReject?.(new Error(m.message));
+        break;
+    }
+  }
+
+  _onLlm(m) {
+    switch (m.type) {
+      case "ready":
+        this.ready.llm = true;
+        this.timings.info.dtype = m.dtype;
+        this._checkReady();
+        break;
+      case "progress":
+        this.dispatchEvent(new CustomEvent("progress", { detail: m }));
+        break;
+      case "info":
+        this.dispatchEvent(new CustomEvent("info", { detail: m.message }));
+        break;
+      case "first_token":
+        this.timings.mark("first_token", m.id);
+        break;
+      case "token":
+        this._onToken(m.id, m.text);
+        break;
+      case "transcript": {
+        const cur = this.current;
+        if (!cur || cur.id !== m.id) return;
+        if (cur.transcriptResolve) {
+          cur.transcriptResolve(m.text);
+          cur.transcriptResolve = null;
+        }
+        if (m.text) this._setUserText(cur, m.text);
+        break;
+      }
+      case "done":
+        this._onDone(m);
+        break;
+      case "error": {
+        const cur = this.current;
+        if (cur && (m.id == null || cur.id === m.id)) {
+          cur.transcriptReject?.(new Error(m.message));
+          if (!cur.cancelled) this._finish(cur, { error: true });
+        }
+        this._error(m.message);
+        // only a load failure aborts the boot; a failed turn is just a failed turn
+        if (!this.ready.llm && m.id == null) this._readyReject?.(new Error(m.message));
+        break;
+      }
+    }
+  }
+
+  _error(message) {
+    console.error(message);
+    this.dispatchEvent(new CustomEvent("error", { detail: message }));
+  }
+}

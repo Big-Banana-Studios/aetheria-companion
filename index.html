@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+    <meta name="theme-color" content="#0c0d1d" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <title>Mira · Aetheria Companion</title>
+    <link rel="icon" href="./assets/icon-192.png" type="image/png" />
+    <link rel="apple-touch-icon" href="./assets/icon-192.png" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="stylesheet" href="./src/style.css" />
+  </head>
+  <body>
+    <!-- Gate: WebGPU check, brain choice, model download -->
+    <section id="gate" class="screen">
+      <div class="gate-card">
+        <div class="hero">
+          <img id="portrait" src="./assets/mira-portrait.png" alt="Mira, the courier" width="112" height="112" />
+          <div>
+            <h1>Mira</h1>
+            <p class="sub">The courier from Paperless, off duty. Everything runs in this browser. Nothing leaves the phone.</p>
+          </div>
+        </div>
+
+        <p id="gate-msg" class="msg"></p>
+
+        <fieldset id="brain-pick">
+          <legend>Brain</legend>
+          <label class="opt">
+            <input type="radio" name="brain" value="gemma" checked />
+            <span><b>On-device, full</b> · Gemma 4 E2B hears you directly and can see a camera still. <em>About 3.4 GB once.</em></span>
+          </label>
+          <label class="opt">
+            <input type="radio" name="brain" value="text" />
+            <span><b>On-device, light</b> · Moonshine transcribes, LFM2.5 2.6B answers. Text only. <em>About 1.6 GB once.</em></span>
+          </label>
+          <label class="opt">
+            <input type="radio" name="brain" value="lab" />
+            <span><b>Lab mode</b> · Moonshine transcribes, the home LiteLLM box answers over HTTP. <em>About 80 MB once. Home network only.</em></span>
+          </label>
+        </fieldset>
+
+        <div id="lab-fields" class="lab-fields" hidden>
+          <label>Endpoint <input id="lab-url" type="url" placeholder="http://khadas.local:4000/v1/chat/completions" /></label>
+          <label>Model <input id="lab-model" type="text" placeholder="gpt-oss-20b" /></label>
+          <label>API key <input id="lab-key" type="password" placeholder="optional" /></label>
+        </div>
+
+        <p class="fine">Voice: Kokoro 82M (about 330 MB). Ears: Silero VAD (2 MB). Files are cached in the browser; later launches are instant and work offline.</p>
+
+        <button id="btn-start" class="primary">Download and start</button>
+
+        <div id="dl" hidden>
+          <div class="bar"><div id="dl-bar"></div></div>
+          <div id="dl-total" class="fine"></div>
+          <ul id="dl-list"></ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- The stage -->
+    <main id="stage" class="screen" hidden>
+      <div id="sprite-wrap">
+        <canvas id="sprite"></canvas>
+        <div id="hud">
+          <span id="state-chip" class="chip">idle</span>
+          <span id="regime-chip" class="chip" title="Aura regime">HEART</span>
+          <button id="btn-debug" class="chip ghost" title="Timings">ms</button>
+        </div>
+        <div id="cam-wrap" hidden>
+          <video id="cam" autoplay playsinline muted></video>
+          <button id="btn-snap" title="Attach this frame to the next turn">look</button>
+        </div>
+        <div id="toast" hidden></div>
+      </div>
+
+      <div id="transcript"><div id="lines"></div></div>
+
+      <div id="controls">
+        <button id="btn-cam" class="round" title="Camera">◉</button>
+        <button id="btn-talk" class="talk" title="Hold to talk">
+          <span class="talk-label">listening</span>
+        </button>
+        <button id="btn-settings" class="round" title="Settings">⚙</button>
+      </div>
+    </main>
+
+    <!-- Settings -->
+    <dialog id="settings">
+      <form method="dialog">
+        <h2>Settings</h2>
+
+        <label>Voice
+          <select id="set-voice"></select>
+        </label>
+        <label>Speed <span id="set-speed-val">1.0</span>
+          <input id="set-speed" type="range" min="0.7" max="1.3" step="0.05" value="1" />
+        </label>
+
+        <label>Listening
+          <select id="set-mode">
+            <option value="vad">Hands-free (voice activity)</option>
+            <option value="ptt">Push to talk</option>
+          </select>
+        </label>
+        <label>Mic sensitivity <span id="set-vad-val">50</span>
+          <input id="set-vad" type="range" min="0" max="100" step="5" value="50" />
+        </label>
+        <label class="row"><input id="set-barge" type="checkbox" checked /> Let me interrupt her while she is talking</label>
+        <label class="row"><input id="set-smoke" type="checkbox" checked /> Smoke breaks and naps when it has been quiet a while</label>
+        <label class="row"><input id="set-scene" type="checkbox" checked /> The street behind her (rain, neon, the city)</label>
+        <label class="row"><input id="set-sampling" type="checkbox" /> Creative sampling (more varied, less predictable)</label>
+
+        <label>Aura
+          <select id="set-regime">
+            <option value="auto">Follow the Reader (or HEART)</option>
+            <option value="GUT">GUT · Undercity · ember</option>
+            <option value="HEART">HEART · Street Market · rose</option>
+            <option value="HEAD">HEAD · The Stack · white light</option>
+          </select>
+        </label>
+
+        <label>Persona (system prompt)
+          <textarea id="set-persona" rows="10" spellcheck="false"></textarea>
+        </label>
+        <div class="btn-row">
+          <button type="button" id="btn-persona-reset" class="ghost">Reset persona</button>
+          <button type="button" id="btn-clear" class="ghost">Clear memory</button>
+        </div>
+
+        <details>
+          <summary>Lab mode</summary>
+          <label>Endpoint <input id="set-lab-url" type="url" /></label>
+          <label>Model <input id="set-lab-model" type="text" /></label>
+          <label>API key <input id="set-lab-key" type="password" /></label>
+          <p class="fine">Takes effect after a reload. A page served over https cannot call a plain http endpoint; run the app from a local http server on the same network, or put LiteLLM behind https.</p>
+        </details>
+
+        <details>
+          <summary>Storage</summary>
+          <p id="storage-info" class="fine"></p>
+          <button type="button" id="btn-purge" class="ghost danger">Delete downloaded models</button>
+        </details>
+
+        <div class="btn-row end">
+          <button id="btn-settings-close" class="primary" value="close">Done</button>
+        </div>
+      </form>
+    </dialog>
+
+    <pre id="debug" hidden></pre>
+
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>

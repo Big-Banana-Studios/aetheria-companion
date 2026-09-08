@@ -1,0 +1,28 @@
+{
+  "name": "aetheria-companion",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "A fully on-device voice companion: Gemma 4 E2B (audio+vision+chat) + Kokoro TTS + Silero VAD, all in the browser on WebGPU.",
+  "license": "MIT",
+  "scripts": {
+    "postinstall": "node tools/copy_ort.mjs",
+    "prebuild": "node tools/copy_ort.mjs",
+    "predev": "node tools/copy_ort.mjs",
+    "dev": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview --host",
+    "sprites": "python tools/build_sprites.py --pack ../top-down-bagless-courier-spritesheet --pack \"../the Courier sleep\" --out public/assets/sprites/courier",
+    "check": "node tools/smoke_api.mjs && node tools/smoke_vad.mjs",
+    "test:pc": "node tools/pc_test.mjs",
+    "pc": "node tools/pc.mjs",
+    "shots": "node tools/screenshots.mjs"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "4.2.0",
+    "kokoro-js": "1.2.1"
+  },
+  "devDependencies": {
+    "vite": "^7.1.0"
+  }
+}

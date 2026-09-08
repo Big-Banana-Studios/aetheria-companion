@@ -1,0 +1,2624 @@
+{
+ "meta": {
+  "character": "the Paperless courier (bagless, off duty)",
+  "frame": 160,
+  "character_height": 144,
+  "feet_y": 159,
+  "atlas": "courier.png",
+  "columns": 14,
+  "rows": 13,
+  "scaling": "integer nearest-neighbour only",
+  "generated_by": "tools/build_sprites.py - do not hand-edit",
+  "packs": [
+   "top-down-bagless-courier-spritesheet",
+   "the Courier sleep"
+  ]
+ },
+ "mouth": {
+  "source": "procedural",
+  "box": {
+   "w": 16,
+   "h": 10
+  },
+  "skin": "#84473e",
+  "dark": "#340c16",
+  "inner": "#8d0f44",
+  "note": "No mouth frames exist in the courier packs; the renderer draws a mouth at each frame's `mouth` anchor. Build with --talk to cut real frames (see SPRITE_GUIDE.md)."
+ },
+ "moods": {
+  "calm": {
+   "gesture": null,
+   "glow": 1.0,
+   "breathe": 1.6,
+   "rain": 0.5
+  },
+  "happy": {
+   "gesture": "jump",
+   "glow": 1.3,
+   "breathe": 2.3,
+   "rain": 0.3
+  },
+  "curious": {
+   "gesture": "lean",
+   "glow": 1.1,
+   "breathe": 1.9,
+   "rain": 0.5
+  },
+  "concerned": {
+   "gesture": "reach",
+   "glow": 0.7,
+   "breathe": 1.0,
+   "rain": 0.9
+  },
+  "amused": {
+   "gesture": "bounce",
+   "glow": 1.2,
+   "breathe": 2.0,
+   "rain": 0.35
+  },
+  "excited": {
+   "gesture": "dash",
+   "glow": 1.35,
+   "breathe": 2.6,
+   "rain": 0.45
+  },
+  "annoyed": {
+   "gesture": "punch",
+   "glow": 0.9,
+   "breathe": 2.2,
+   "rain": 0.75
+  },
+  "sassy": {
+   "gesture": "punch_sign",
+   "glow": 1.15,
+   "breathe": 2.4,
+   "rain": 0.55
+  },
+  "tired": {
+   "gesture": "kneel",
+   "glow": 0.6,
+   "breathe": 0.9,
+   "rain": 0.55
+  },
+  "thoughtful": {
+   "gesture": "drag",
+   "glow": 0.85,
+   "breathe": 1.3,
+   "rain": 0.6
+  }
+ },
+ "gestures": {
+  "jump": [
+   {
+    "clip": "jump_down"
+   }
+  ],
+  "bounce": [
+   {
+    "clip": "jump_down",
+    "fps": 16
+   }
+  ],
+  "dash": [
+   {
+    "clip": "dash_right",
+    "dx": 34
+   },
+   {
+    "clip": "dash_left",
+    "dx": -34
+   }
+  ],
+  "punch": [
+   {
+    "clip": "punch_down"
+   }
+  ],
+  "punch_sign": [
+   {
+    "clip": "walk_right",
+    "to": "sign"
+   },
+   {
+    "clip": "punch_right",
+    "hit": "sign",
+    "hold": 0.3
+   },
+   {
+    "clip": "idle_right",
+    "dur": 0.45
+   },
+   {
+    "clip": "walk_left",
+    "to": 0
+   }
+  ],
+  "reach": [
+   {
+    "clip": "resonate_down",
+    "hold": 0.7
+   }
+  ],
+  "lean": [
+   {
+    "clip": "idle_southeast",
+    "dur": 0.8
+   },
+   {
+    "clip": "idle_southwest",
+    "dur": 0.8
+   }
+  ],
+  "kneel": [
+   {
+    "clip": "sleep_down",
+    "frames": [
+     0,
+     1
+    ],
+    "hold": 1.4
+   }
+  ],
+  "flinch": [
+   {
+    "clip": "hurt_down"
+   }
+  ],
+  "startle": [
+   {
+    "clip": "hurt_down"
+   },
+   {
+    "clip": "idle_down",
+    "dur": 0.25
+   }
+  ],
+  "enter": [
+   {
+    "clip": "run_right",
+    "from": "offleft",
+    "to": 0
+   },
+   {
+    "clip": "idle_right",
+    "dur": 0.2
+   }
+  ],
+  "pace": [
+   {
+    "clip": "walk_right",
+    "dur": 0.7,
+    "dx": 26
+   },
+   {
+    "clip": "idle_right",
+    "dur": 0.5
+   },
+   {
+    "clip": "walk_left",
+    "dur": 0.7,
+    "dx": -26
+   }
+  ],
+  "drag": [
+   {
+    "clip": "smoke_right",
+    "dur": 2.4
+   }
+  ],
+  "lookaway": [
+   {
+    "clip": "idle_northeast",
+    "dur": 1.6
+   }
+  ],
+  "lookup": [
+   {
+    "clip": "idle_up",
+    "dur": 1.5
+   }
+  ],
+  "glance": [
+   {
+    "clip": "idle_southeast",
+    "dur": 1.2
+   }
+  ],
+  "listen_long": [
+   {
+    "clip": "resonate_down",
+    "hold": -1
+   }
+  ]
+ },
+ "states": {
+  "idle": {
+   "clip": "idle_down",
+   "bob": true,
+   "blink": true,
+   "fidgets": [
+    "glance",
+    "lookup",
+    "lookaway"
+   ],
+   "fidget_every": [
+    12,
+    25
+   ]
+  },
+  "idle_long": {
+   "clips": [
+    "smoke_southeast",
+    "smoke_right",
+    "smoke_southwest",
+    "smoke_left",
+    "smoke_northeast",
+    "smoke_up",
+    "smoke_northwest"
+   ],
+   "after_seconds": 90,
+   "turn_every": [
+    8,
+    20
+   ],
+   "optional": true,
+   "note": "the smoke break; she looks around while she sits it out"
+  },
+  "listening": {
+   "clip": "walk_down",
+   "fps": 6,
+   "aura": "low",
+   "long_after": 5,
+   "long": "listen_long"
+  },
+  "thinking": {
+   "clip": "idle_right",
+   "turn_every": 1.2,
+   "particles": true,
+   "fidgets": [
+    "pace",
+    "drag",
+    "lookaway"
+   ],
+   "fidget_after": 1.8
+  },
+  "speaking": {
+   "clip": "idle_down",
+   "mouth": true,
+   "nod_on_sentence": true,
+   "react": "mood"
+  },
+  "interrupted": {
+   "clip": "hurt_down",
+   "then": "listening"
+  },
+  "error": {
+   "clip": "sleep_down",
+   "hold_last": true,
+   "gesture": "flinch",
+   "strike": true
+  },
+  "asleep": {
+   "clips": [
+    "sleep_down",
+    "sleep_right",
+    "sleep_left",
+    "sleep_southeast",
+    "sleep_southwest",
+    "sleep_northeast",
+    "sleep_northwest",
+    "sleep_up"
+   ],
+   "after_seconds": 240,
+   "hold_last": true,
+   "optional": true,
+   "note": "a nap, after the smoke break has gone on a while; any speech wakes her"
+  }
+ },
+ "clips": {
+  "idle_down": {
+   "fps": 6,
+   "loop": true,
+   "facing": "down",
+   "frames": [
+    {
+     "x": 0,
+     "y": 0,
+     "mouth": {
+      "x": 80,
+      "y": 44
+     },
+     "visor": {
+      "x": 72,
+      "y": 33,
+      "w": 17,
+      "h": 4
+     }
+    },
+    {
+     "x": 160,
+     "y": 0,
+     "mouth": {
+      "x": 81,
+      "y": 44
+     },
+     "visor": {
+      "x": 73,
+      "y": 33,
+      "w": 16,
+      "h": 4
+     }
+    },
+    {
+     "x": 320,
+     "y": 0,
+     "mouth": {
+      "x": 82,
+      "y": 44
+     },
+     "visor": {
+      "x": 74,
+      "y": 34,
+      "w": 16,
+      "h": 3
+     }
+    },
+    {
+     "x": 480,
+     "y": 0,
+     "mouth": {
+      "x": 82,
+      "y": 44
+     },
+     "visor": {
+      "x": 73,
+      "y": 33,
+      "w": 17,
+      "h": 4
+     }
+    },
+    {
+     "x": 640,
+     "y": 0,
+     "mouth": {
+      "x": 79,
+      "y": 44
+     },
+     "visor": {
+      "x": 71,
+      "y": 33,
+      "w": 16,
+      "h": 4
+     }
+    },
+    {
+     "x": 800,
+     "y": 0,
+     "mouth": {
+      "x": 78,
+      "y": 44
+     },
+     "visor": {
+      "x": 69,
+      "y": 33,
+      "w": 17,
+      "h": 4
+     }
+    },
+    {
+     "x": 960,
+     "y": 0,
+     "mouth": {
+      "x": 78,
+      "y": 44
+     },
+     "visor": {
+      "x": 70,
+      "y": 33,
+      "w": 16,
+      "h": 4
+     }
+    },
+    {
+     "x": 1120,
+     "y": 0,
+     "mouth": {
+      "x": 79,
+      "y": 44
+     },
+     "visor": {
+      "x": 71,
+      "y": 33,
+      "w": 16,
+      "h": 4
+     }
+    }
+   ],
+   "source": "iso_idle_down_right",
+   "source_frames": 64,
+   "kept": [
+    0,
+    4,
+    8,
+    11,
+    15,
+    19,
+    23,
+    26
+   ],
+   "stride": 30.19
+  },
+  "idle_right": {
+   "fps": 6,
+   "loop": true,
+   "facing": "right",
+   "frames": [
+    {
+     "x": 1280,
+     "y": 0
+    },
+    {
+     "x": 1440,
+     "y": 0
+    },
+    {
+     "x": 1600,
+     "y": 0
+    },
+    {
+     "x": 1760,
+     "y": 0
+    }
+   ],
+   "source": "iso_idle_right_right",
+   "source_frames": 64,
+   "kept": [
+    0,
+    16,
+    32,
+    48
+   ],
+   "stride": 64.0,
+   "note": "no clear cycle - sampled across the whole clip"
+  },
+  "idle_southeast": {
+   "fps": 6,
+   "loop": true,
+   "facing": "southeast",
+   "frames": [
+    {
+     "x": 1920,
+     "y": 0
+    },
+    {
+     "x": 2080,
+     "y": 0
+    },
+    {
+     "x": 0,
+     "y": 160
+    },
+    {
+     "x": 160,
+     "y": 160
+    }
+   ],
+   "source": "iso_idle_southeast_right",
+   "source_frames": 64,
+   "kept": [
+    0,
+    6,
+    12,
+    18
+   ],
+   "stride": 24.37
+  },
+  "walk_down": {
+   "fps": 21,
+   "loop": true,
+   "facing": "down",
+   "frames": [
+    {
+     "x": 320,
+     "y": 160,
+     "mouth": {
+      "x": 78,
+      "y": 43
+     },
+     "visor": {
+      "x": 69,
+      "y": 32,
+      "w": 17,
+      "h": 4
+     }
+    },
+    {
+     "x": 480,
+     "y": 160,
+     "mouth": {
+      "x": 80,
+      "y": 42
+     },
+     "visor": {
+      "x": 71,
+      "y": 31,
+      "w": 17,
+      "h": 4
+     }
+    },
+    {
+     "x": 640,
+     "y": 160,
+     "mouth": {
+      "x": 82,
+      "y": 44
+     },
+     "visor": {
+      "x": 74,
+      "y": 34,
+      "w": 17,
+      "h": 3
+     }
+    },
+    {
+     "x": 800,
+     "y": 160,
+     "mouth": {
+      "x": 82,
+      "y": 41
+     },
+     "visor": {
+      "x": 74,
+      "y": 31,
+      "w": 17,
+      "h": 3
+     }
+    },
+    {
+     "x": 960,
+     "y": 160,
+     "mouth": {
+      "x": 80,
+      "y": 42
+     },
+     "visor": {
+      "x": 72,
+      "y": 31,
+      "w": 17,
+      "h": 4
+     }
+    },
+    {
+     "x": 1120,
+     "y": 160,
+     "mouth": {
+      "x": 78,
+      "y": 43
+     },
+     "visor": {
+      "x": 70,
+      "y": 33,
+      "w": 17,
+      "h": 3
+     }
+    },
+    {
+     "x": 1280,
+     "y": 160,
+     "mouth": {
+      "x": 78,
+      "y": 41
+     },
+     "visor": {
+      "x": 70,
+      "y": 30,
+      "w": 17,
+      "h": 4
+     }
+    },
+    {
+     "x": 1440,
+     "y": 160,
+     "mouth": {
+      "x": 80,
+      "y": 43
+     },
+     "visor": {
+      "x": 72,
+      "y": 32,
+      "w": 17,
+      "h": 4
+     }
+    },
+    {
+     "x": 1600,
+     "y": 160,
+     "mouth": {
+      "x": 82,
+      "y": 45
+     },
+     "visor": {
+      "x": 74,
+      "y": 34,
+      "w": 17,
+      "h": 4
+     }
+    },
+    {
+     "x": 1760,
+     "y": 160,
+     "mouth": {
+      "x": 82,
+      "y": 42
+     },
+     "visor": {
+      "x": 73,
+      "y": 31,
+      "w": 17,
+      "h": 4
+     }
+    },
+    {
+     "x": 1920,
+     "y": 160,
+     "mouth": {
+      "x": 78,
+      "y": 43
+     },
+     "visor": {
+      "x": 70,
+      "y": 32,
+      "w": 17,
+      "h": 4
+     }
+    },
+    {
+     "x": 2080,
+     "y": 160,
+     "mouth": {
+      "x": 78,
+      "y": 44
+     },
+     "visor": {
+      "x": 69,
+      "y": 34,
+      "w": 17,
+      "h": 3
+     }
+    }
+   ],
+   "source": "iso_walk_down_right",
+   "source_frames": 64,
+   "kept": [
+    0,
+    2,
+    5,
+    7,
+    9,
+    11,
+    14,
+    16,
+    18,
+    20,
+    23,
+    25
+   ],
+   "stride": 27.23
+  },
+  "resonate_down": {
+   "fps": 8,
+   "loop": false,
+   "facing": "down",
+   "frames": [
+    {
+     "x": 0,
+     "y": 320,
+     "mouth": {
+      "x": 82,
+      "y": 43
+     },
+     "visor": {
+      "x": 73,
+      "y": 33,
+      "w": 17,
+      "h": 3
+     }
+    },
+    {
+     "x": 160,
+     "y": 320,
+     "mouth": {
+      "x": 82,
+      "y": 44
+     },
+     "visor": {
+      "x": 73,
+      "y": 33,
+      "w": 17,
+      "h": 4
+     }
+    },
+    {
+     "x": 320,
+     "y": 320,
+     "mouth": {
+      "x": 82,
+      "y": 46
+     },
+     "visor": {
+      "x": 73,
+      "y": 35,
+      "w": 17,
+      "h": 4
+     }
+    },
+    {
+     "x": 480,
+     "y": 320,
+     "mouth": {
+      "x": 86,
+      "y": 52
+     },
+     "visor": {
+      "x": 73,
+      "y": 32,
+      "w": 26,
+      "h": 13
+     }
+    }
+   ],
+   "source": "resonate Down",
+   "source_frames": 64,
+   "kept": [
+    0,
+    10,
+    21,
+    31
+   ],
+   "stride": null,
+   "note": "cut before the drawn glow at frame 32"
+  },
+  "hurt_down": {
+   "fps": 10,
+   "loop": false,
+   "facing": "down",
+   "frames": [
+    {
+     "x": 640,
+     "y": 320,
+     "mouth": {
+      "x": 80,
+      "y": 42
+     },
+     "visor": {
+      "x": 72,
+      "y": 31,
+      "w": 17,
+      "h": 4
+     }
+    },
+    {
+     "x": 800,
+     "y": 320,
+     "mouth": {
+      "x": 80,
+      "y": 47
+     },
+     "visor": {
+      "x": 71,
+      "y": 36,
+      "w": 17,
+      "h": 4
+     }
+    },
+    {
+     "x": 960,
+     "y": 320,
+     "mouth": {
+      "x": 80,
+      "y": 43
+     },
+     "visor": {
+      "x": 71,
+      "y": 32,
+      "w": 17,
+      "h": 4
+     }
+    }
+   ],
+   "source": "hurt Down",
+   "source_frames": 64,
+   "kept": [
+    0,
+    6,
+    11
+   ],
+   "stride": null,
+   "note": "kept the recoil after the flash (frames 32+)"
+  },
+  "jump_down": {
+   "fps": 12,
+   "loop": false,
+   "facing": "down",
+   "frames": [
+    {
+     "x": 1120,
+     "y": 320,
+     "mouth": {
+      "x": 78,
+      "y": 73
+     },
+     "visor": {
+      "x": 70,
+      "y": 63,
+      "w": 16,
+      "h": 3
+     }
+    },
+    {
+     "x": 1280,
+     "y": 320,
+     "mouth": {
+      "x": 78,
+      "y": 99
+     },
+     "visor": {
+      "x": 71,
+      "y": 88,
+      "w": 15,
+      "h": 4
+     }
+    },
+    {
+     "x": 1440,
+     "y": 320,
+     "mouth": {
+      "x": 78,
+      "y": 97
+     },
+     "visor": {
+      "x": 71,
+      "y": 87,
+      "w": 15,
+      "h": 3
+     }
+    },
+    {
+     "x": 1600,
+     "y": 320,
+     "mouth": {
+      "x": 78,
+      "y": 30
+     },
+     "visor": {
+      "x": 70,
+      "y": 18,
+      "w": 16,
+      "h": 5
+     }
+    },
+    {
+     "x": 1760,
+     "y": 320,
+     "mouth": {
+      "x": 78,
+      "y": 30
+     },
+     "visor": {
+      "x": 71,
+      "y": 19,
+      "w": 15,
+      "h": 4
+     }
+    },
+    {
+     "x": 1920,
+     "y": 320,
+     "mouth": {
+      "x": 78,
+      "y": 49
+     },
+     "visor": {
+      "x": 70,
+      "y": 39,
+      "w": 16,
+      "h": 3
+     }
+    },
+    {
+     "x": 2080,
+     "y": 320,
+     "mouth": {
+      "x": 78,
+      "y": 60
+     },
+     "visor": {
+      "x": 70,
+      "y": 49,
+      "w": 16,
+      "h": 4
+     }
+    },
+    {
+     "x": 0,
+     "y": 480,
+     "mouth": {
+      "x": 78,
+      "y": 99
+     },
+     "visor": {
+      "x": 71,
+      "y": 89,
+      "w": 15,
+      "h": 3
+     }
+    }
+   ],
+   "source": "iso_jump_down_right",
+   "source_frames": 64,
+   "kept": [
+    0,
+    9,
+    18,
+    27,
+    36,
+    45,
+    54,
+    63
+   ],
+   "stride": null
+  },
+  "dash_right": {
+   "fps": 16,
+   "loop": false,
+   "facing": "right",
+   "frames": [
+    {
+     "x": 160,
+     "y": 480
+    },
+    {
+     "x": 320,
+     "y": 480
+    },
+    {
+     "x": 480,
+     "y": 480
+    },
+    {
+     "x": 640,
+     "y": 480
+    },
+    {
+     "x": 800,
+     "y": 480
+    },
+    {
+     "x": 960,
+     "y": 480
+    }
+   ],
+   "source": "dash Right",
+   "source_frames": 64,
+   "kept": [
+    0,
+    13,
+    25,
+    38,
+    50,
+    63
+   ],
+   "stride": null
+  },
+  "punch_down": {
+   "fps": 12,
+   "loop": false,
+   "facing": "down",
+   "frames": [
+    {
+     "x": 1120,
+     "y": 480,
+     "mouth": {
+      "x": 72,
+      "y": 39
+     },
+     "visor": {
+      "x": 63,
+      "y": 29,
+      "w": 18,
+      "h": 3
+     }
+    },
+    {
+     "x": 1280,
+     "y": 480,
+     "mouth": {
+      "x": 68,
+      "y": 43
+     },
+     "visor": {
+      "x": 59,
+      "y": 32,
+      "w": 18,
+      "h": 4
+     }
+    },
+    {
+     "x": 1440,
+     "y": 480,
+     "mouth": {
+      "x": 64,
+      "y": 48
+     },
+     "visor": {
+      "x": 55,
+      "y": 36,
+      "w": 17,
+      "h": 5
+     }
+    },
+    {
+     "x": 1600,
+     "y": 480,
+     "mouth": {
+      "x": 68,
+      "y": 53
+     },
+     "visor": {
+      "x": 60,
+      "y": 42,
+      "w": 17,
+      "h": 4
+     }
+    },
+    {
+     "x": 1760,
+     "y": 480,
+     "mouth": {
+      "x": 71,
+      "y": 47
+     },
+     "visor": {
+      "x": 62,
+      "y": 35,
+      "w": 18,
+      "h": 5
+     }
+    },
+    {
+     "x": 1920,
+     "y": 480,
+     "mouth": {
+      "x": 71,
+      "y": 45
+     },
+     "visor": {
+      "x": 62,
+      "y": 34,
+      "w": 18,
+      "h": 4
+     }
+    }
+   ],
+   "source": "Punch Down",
+   "source_frames": 64,
+   "kept": [
+    0,
+    13,
+    25,
+    38,
+    50,
+    63
+   ],
+   "stride": null
+  },
+  "punch_right": {
+   "fps": 12,
+   "loop": false,
+   "facing": "right",
+   "frames": [
+    {
+     "x": 2080,
+     "y": 480
+    },
+    {
+     "x": 0,
+     "y": 640
+    },
+    {
+     "x": 160,
+     "y": 640
+    },
+    {
+     "x": 320,
+     "y": 640
+    },
+    {
+     "x": 480,
+     "y": 640
+    },
+    {
+     "x": 640,
+     "y": 640
+    }
+   ],
+   "source": "Punch Right",
+   "source_frames": 64,
+   "kept": [
+    0,
+    13,
+    25,
+    38,
+    50,
+    63
+   ],
+   "stride": null
+  },
+  "run_right": {
+   "fps": 21,
+   "loop": true,
+   "facing": "right",
+   "frames": [
+    {
+     "x": 800,
+     "y": 640
+    },
+    {
+     "x": 960,
+     "y": 640
+    },
+    {
+     "x": 1120,
+     "y": 640
+    },
+    {
+     "x": 1280,
+     "y": 640
+    },
+    {
+     "x": 1440,
+     "y": 640
+    },
+    {
+     "x": 1600,
+     "y": 640
+    },
+    {
+     "x": 1760,
+     "y": 640
+    },
+    {
+     "x": 1920,
+     "y": 640
+    },
+    {
+     "x": 2080,
+     "y": 640
+    },
+    {
+     "x": 0,
+     "y": 800
+    },
+    {
+     "x": 160,
+     "y": 800
+    },
+    {
+     "x": 320,
+     "y": 800
+    }
+   ],
+   "source": "iso_run_right_right",
+   "source_frames": 49,
+   "kept": [
+    0,
+    2,
+    4,
+    6,
+    7,
+    9,
+    11,
+    13,
+    15,
+    17,
+    19,
+    21
+   ],
+   "stride": 22.4,
+   "cycle_px": 191.5
+  },
+  "walk_right": {
+   "fps": 21,
+   "loop": true,
+   "facing": "right",
+   "frames": [
+    {
+     "x": 480,
+     "y": 800
+    },
+    {
+     "x": 640,
+     "y": 800
+    },
+    {
+     "x": 800,
+     "y": 800
+    },
+    {
+     "x": 960,
+     "y": 800
+    },
+    {
+     "x": 1120,
+     "y": 800
+    },
+    {
+     "x": 1280,
+     "y": 800
+    },
+    {
+     "x": 1440,
+     "y": 800
+    },
+    {
+     "x": 1600,
+     "y": 800
+    },
+    {
+     "x": 1760,
+     "y": 800
+    },
+    {
+     "x": 1920,
+     "y": 800
+    },
+    {
+     "x": 2080,
+     "y": 800
+    },
+    {
+     "x": 0,
+     "y": 960
+    }
+   ],
+   "source": "iso_walk_right_right",
+   "source_frames": 64,
+   "kept": [
+    0,
+    3,
+    5,
+    8,
+    10,
+    13,
+    15,
+    18,
+    20,
+    23,
+    25,
+    28
+   ],
+   "stride": 30.3,
+   "cycle_px": 121.9
+  },
+  "idle_up": {
+   "fps": 6,
+   "loop": true,
+   "facing": "up",
+   "frames": [
+    {
+     "x": 160,
+     "y": 960
+    },
+    {
+     "x": 320,
+     "y": 960
+    },
+    {
+     "x": 480,
+     "y": 960
+    },
+    {
+     "x": 640,
+     "y": 960
+    }
+   ],
+   "source": "iso_idle_up_right",
+   "source_frames": 49,
+   "kept": [
+    0,
+    12,
+    24,
+    37
+   ],
+   "stride": 49.0,
+   "note": "no clear cycle - sampled across the whole clip"
+  },
+  "idle_northeast": {
+   "fps": 6,
+   "loop": true,
+   "facing": "northeast",
+   "frames": [
+    {
+     "x": 800,
+     "y": 960
+    },
+    {
+     "x": 960,
+     "y": 960
+    },
+    {
+     "x": 1120,
+     "y": 960
+    },
+    {
+     "x": 1280,
+     "y": 960
+    }
+   ],
+   "source": "iso_idle_northeast_right",
+   "source_frames": 49,
+   "kept": [
+    0,
+    12,
+    24,
+    37
+   ],
+   "stride": 49.0,
+   "note": "no clear cycle - sampled across the whole clip"
+  },
+  "sleep_down": {
+   "fps": 5,
+   "loop": false,
+   "facing": "down",
+   "frames": [
+    {
+     "x": 1440,
+     "y": 960,
+     "mouth": {
+      "x": 80,
+      "y": 68
+     },
+     "visor": {
+      "x": 68,
+      "y": 55,
+      "w": 23,
+      "h": 6
+     }
+    },
+    {
+     "x": 1600,
+     "y": 960,
+     "mouth": {
+      "x": 80,
+      "y": 64
+     },
+     "visor": {
+      "x": 68,
+      "y": 51,
+      "w": 23,
+      "h": 6
+     }
+    },
+    {
+     "x": 1760,
+     "y": 960,
+     "mouth": {
+      "x": 80,
+      "y": 42
+     },
+     "visor": {
+      "x": 69,
+      "y": 31,
+      "w": 22,
+      "h": 4
+     }
+    },
+    {
+     "x": 1920,
+     "y": 960,
+     "mouth": {
+      "x": 80,
+      "y": 44
+     },
+     "visor": {
+      "x": 69,
+      "y": 31,
+      "w": 22,
+      "h": 6
+     }
+    },
+    {
+     "x": 2080,
+     "y": 960,
+     "mouth": {
+      "x": 80,
+      "y": 45
+     },
+     "visor": {
+      "x": 69,
+      "y": 32,
+      "w": 22,
+      "h": 6
+     }
+    },
+    {
+     "x": 0,
+     "y": 1120,
+     "mouth": {
+      "x": 80,
+      "y": 45
+     },
+     "visor": {
+      "x": 69,
+      "y": 32,
+      "w": 22,
+      "h": 6
+     }
+    }
+   ],
+   "source": "top down courier-iso_custom_sleep_down-v1.json",
+   "source_frames": 56,
+   "kept": [
+    0,
+    11,
+    22,
+    33,
+    44,
+    55
+   ],
+   "stride": null
+  },
+  "sleep_right": {
+   "fps": 5,
+   "loop": false,
+   "facing": "right",
+   "frames": [
+    {
+     "x": 160,
+     "y": 1120
+    },
+    {
+     "x": 320,
+     "y": 1120
+    },
+    {
+     "x": 480,
+     "y": 1120
+    },
+    {
+     "x": 640,
+     "y": 1120
+    },
+    {
+     "x": 800,
+     "y": 1120
+    },
+    {
+     "x": 960,
+     "y": 1120
+    }
+   ],
+   "source": "top down courier-iso_custom_sleep_right-v1.json",
+   "source_frames": 56,
+   "kept": [
+    0,
+    11,
+    22,
+    33,
+    44,
+    55
+   ],
+   "stride": null
+  },
+  "sleep_southeast": {
+   "fps": 5,
+   "loop": false,
+   "facing": "southeast",
+   "frames": [
+    {
+     "x": 1120,
+     "y": 1120
+    },
+    {
+     "x": 1280,
+     "y": 1120
+    },
+    {
+     "x": 1440,
+     "y": 1120
+    },
+    {
+     "x": 1600,
+     "y": 1120
+    },
+    {
+     "x": 1760,
+     "y": 1120
+    },
+    {
+     "x": 1920,
+     "y": 1120
+    }
+   ],
+   "source": "top down courier-iso_custom_sleep_southeast-v1.json",
+   "source_frames": 56,
+   "kept": [
+    0,
+    11,
+    22,
+    33,
+    44,
+    55
+   ],
+   "stride": null
+  },
+  "sleep_northeast": {
+   "fps": 5,
+   "loop": false,
+   "facing": "northeast",
+   "frames": [
+    {
+     "x": 2080,
+     "y": 1120
+    },
+    {
+     "x": 0,
+     "y": 1280
+    },
+    {
+     "x": 160,
+     "y": 1280
+    },
+    {
+     "x": 320,
+     "y": 1280
+    },
+    {
+     "x": 480,
+     "y": 1280
+    },
+    {
+     "x": 640,
+     "y": 1280
+    }
+   ],
+   "source": "top down courier-iso_custom_sleep_northeast-v1.json",
+   "source_frames": 56,
+   "kept": [
+    0,
+    11,
+    22,
+    33,
+    44,
+    55
+   ],
+   "stride": null
+  },
+  "sleep_up": {
+   "fps": 5,
+   "loop": false,
+   "facing": "up",
+   "frames": [
+    {
+     "x": 800,
+     "y": 1280
+    },
+    {
+     "x": 960,
+     "y": 1280
+    },
+    {
+     "x": 1120,
+     "y": 1280
+    },
+    {
+     "x": 1280,
+     "y": 1280
+    },
+    {
+     "x": 1440,
+     "y": 1280
+    },
+    {
+     "x": 1600,
+     "y": 1280
+    }
+   ],
+   "source": "top down courier-iso_custom_sleep_up-v1.json",
+   "source_frames": 56,
+   "kept": [
+    0,
+    11,
+    22,
+    33,
+    44,
+    55
+   ],
+   "stride": null
+  },
+  "smoke_southeast": {
+   "fps": 7,
+   "loop": true,
+   "facing": "southeast",
+   "frames": [
+    {
+     "x": 1760,
+     "y": 1280
+    },
+    {
+     "x": 1920,
+     "y": 1280
+    },
+    {
+     "x": 2080,
+     "y": 1280
+    },
+    {
+     "x": 0,
+     "y": 1440
+    },
+    {
+     "x": 160,
+     "y": 1440
+    },
+    {
+     "x": 320,
+     "y": 1440
+    },
+    {
+     "x": 480,
+     "y": 1440
+    },
+    {
+     "x": 640,
+     "y": 1440
+    },
+    {
+     "x": 800,
+     "y": 1440
+    },
+    {
+     "x": 960,
+     "y": 1440
+    },
+    {
+     "x": 1120,
+     "y": 1440
+    },
+    {
+     "x": 1280,
+     "y": 1440
+    }
+   ],
+   "source": "smoking Southeast",
+   "source_frames": 64,
+   "kept": [
+    0,
+    5,
+    11,
+    16,
+    21,
+    27,
+    32,
+    37,
+    43,
+    48,
+    53,
+    59
+   ],
+   "stride": null
+  },
+  "smoke_right": {
+   "fps": 7,
+   "loop": true,
+   "facing": "right",
+   "frames": [
+    {
+     "x": 1440,
+     "y": 1440
+    },
+    {
+     "x": 1600,
+     "y": 1440
+    },
+    {
+     "x": 1760,
+     "y": 1440
+    },
+    {
+     "x": 1920,
+     "y": 1440
+    },
+    {
+     "x": 2080,
+     "y": 1440
+    },
+    {
+     "x": 0,
+     "y": 1600
+    },
+    {
+     "x": 160,
+     "y": 1600
+    },
+    {
+     "x": 320,
+     "y": 1600
+    },
+    {
+     "x": 480,
+     "y": 1600
+    },
+    {
+     "x": 640,
+     "y": 1600
+    },
+    {
+     "x": 800,
+     "y": 1600
+    },
+    {
+     "x": 960,
+     "y": 1600
+    }
+   ],
+   "source": "smoking Right",
+   "source_frames": 64,
+   "kept": [
+    0,
+    5,
+    11,
+    16,
+    21,
+    27,
+    32,
+    37,
+    43,
+    48,
+    53,
+    59
+   ],
+   "stride": null
+  },
+  "smoke_northeast": {
+   "fps": 7,
+   "loop": true,
+   "facing": "northeast",
+   "frames": [
+    {
+     "x": 1120,
+     "y": 1600
+    },
+    {
+     "x": 1280,
+     "y": 1600
+    },
+    {
+     "x": 1440,
+     "y": 1600
+    },
+    {
+     "x": 1600,
+     "y": 1600
+    },
+    {
+     "x": 1760,
+     "y": 1600
+    },
+    {
+     "x": 1920,
+     "y": 1600
+    },
+    {
+     "x": 2080,
+     "y": 1600
+    },
+    {
+     "x": 0,
+     "y": 1760
+    },
+    {
+     "x": 160,
+     "y": 1760
+    },
+    {
+     "x": 320,
+     "y": 1760
+    },
+    {
+     "x": 480,
+     "y": 1760
+    },
+    {
+     "x": 640,
+     "y": 1760
+    }
+   ],
+   "source": "smoking Northeast",
+   "source_frames": 49,
+   "kept": [
+    0,
+    4,
+    8,
+    12,
+    16,
+    20,
+    24,
+    29,
+    33,
+    37,
+    41,
+    45
+   ],
+   "stride": null
+  },
+  "smoke_up": {
+   "fps": 7,
+   "loop": true,
+   "facing": "up",
+   "frames": [
+    {
+     "x": 800,
+     "y": 1760
+    },
+    {
+     "x": 960,
+     "y": 1760
+    },
+    {
+     "x": 1120,
+     "y": 1760
+    },
+    {
+     "x": 1280,
+     "y": 1760
+    },
+    {
+     "x": 1440,
+     "y": 1760
+    },
+    {
+     "x": 1600,
+     "y": 1760
+    },
+    {
+     "x": 1760,
+     "y": 1760
+    },
+    {
+     "x": 1920,
+     "y": 1760
+    },
+    {
+     "x": 2080,
+     "y": 1760
+    },
+    {
+     "x": 0,
+     "y": 1920
+    },
+    {
+     "x": 160,
+     "y": 1920
+    },
+    {
+     "x": 320,
+     "y": 1920
+    }
+   ],
+   "source": "smoking Up",
+   "source_frames": 49,
+   "kept": [
+    0,
+    4,
+    8,
+    12,
+    16,
+    20,
+    24,
+    29,
+    33,
+    37,
+    41,
+    45
+   ],
+   "stride": null
+  },
+  "idle_left": {
+   "fps": 6,
+   "loop": true,
+   "facing": "left",
+   "frames": [
+    {
+     "x": 1280,
+     "y": 0
+    },
+    {
+     "x": 1440,
+     "y": 0
+    },
+    {
+     "x": 1600,
+     "y": 0
+    },
+    {
+     "x": 1760,
+     "y": 0
+    }
+   ],
+   "source": "iso_idle_right_right",
+   "source_frames": 64,
+   "kept": [
+    0,
+    16,
+    32,
+    48
+   ],
+   "stride": 64.0,
+   "note": "no clear cycle - sampled across the whole clip",
+   "mirror_of": "idle_right",
+   "flip": true
+  },
+  "idle_southwest": {
+   "fps": 6,
+   "loop": true,
+   "facing": "southwest",
+   "frames": [
+    {
+     "x": 1920,
+     "y": 0
+    },
+    {
+     "x": 2080,
+     "y": 0
+    },
+    {
+     "x": 0,
+     "y": 160
+    },
+    {
+     "x": 160,
+     "y": 160
+    }
+   ],
+   "source": "iso_idle_southeast_right",
+   "source_frames": 64,
+   "kept": [
+    0,
+    6,
+    12,
+    18
+   ],
+   "stride": 24.37,
+   "mirror_of": "idle_southeast",
+   "flip": true
+  },
+  "idle_northwest": {
+   "fps": 6,
+   "loop": true,
+   "facing": "northwest",
+   "frames": [
+    {
+     "x": 800,
+     "y": 960
+    },
+    {
+     "x": 960,
+     "y": 960
+    },
+    {
+     "x": 1120,
+     "y": 960
+    },
+    {
+     "x": 1280,
+     "y": 960
+    }
+   ],
+   "source": "iso_idle_northeast_right",
+   "source_frames": 49,
+   "kept": [
+    0,
+    12,
+    24,
+    37
+   ],
+   "stride": 49.0,
+   "note": "no clear cycle - sampled across the whole clip",
+   "mirror_of": "idle_northeast",
+   "flip": true
+  },
+  "smoke_left": {
+   "fps": 7,
+   "loop": true,
+   "facing": "left",
+   "frames": [
+    {
+     "x": 1440,
+     "y": 1440
+    },
+    {
+     "x": 1600,
+     "y": 1440
+    },
+    {
+     "x": 1760,
+     "y": 1440
+    },
+    {
+     "x": 1920,
+     "y": 1440
+    },
+    {
+     "x": 2080,
+     "y": 1440
+    },
+    {
+     "x": 0,
+     "y": 1600
+    },
+    {
+     "x": 160,
+     "y": 1600
+    },
+    {
+     "x": 320,
+     "y": 1600
+    },
+    {
+     "x": 480,
+     "y": 1600
+    },
+    {
+     "x": 640,
+     "y": 1600
+    },
+    {
+     "x": 800,
+     "y": 1600
+    },
+    {
+     "x": 960,
+     "y": 1600
+    }
+   ],
+   "source": "smoking Right",
+   "source_frames": 64,
+   "kept": [
+    0,
+    5,
+    11,
+    16,
+    21,
+    27,
+    32,
+    37,
+    43,
+    48,
+    53,
+    59
+   ],
+   "stride": null,
+   "mirror_of": "smoke_right",
+   "flip": true
+  },
+  "smoke_southwest": {
+   "fps": 7,
+   "loop": true,
+   "facing": "southwest",
+   "frames": [
+    {
+     "x": 1760,
+     "y": 1280
+    },
+    {
+     "x": 1920,
+     "y": 1280
+    },
+    {
+     "x": 2080,
+     "y": 1280
+    },
+    {
+     "x": 0,
+     "y": 1440
+    },
+    {
+     "x": 160,
+     "y": 1440
+    },
+    {
+     "x": 320,
+     "y": 1440
+    },
+    {
+     "x": 480,
+     "y": 1440
+    },
+    {
+     "x": 640,
+     "y": 1440
+    },
+    {
+     "x": 800,
+     "y": 1440
+    },
+    {
+     "x": 960,
+     "y": 1440
+    },
+    {
+     "x": 1120,
+     "y": 1440
+    },
+    {
+     "x": 1280,
+     "y": 1440
+    }
+   ],
+   "source": "smoking Southeast",
+   "source_frames": 64,
+   "kept": [
+    0,
+    5,
+    11,
+    16,
+    21,
+    27,
+    32,
+    37,
+    43,
+    48,
+    53,
+    59
+   ],
+   "stride": null,
+   "mirror_of": "smoke_southeast",
+   "flip": true
+  },
+  "smoke_northwest": {
+   "fps": 7,
+   "loop": true,
+   "facing": "northwest",
+   "frames": [
+    {
+     "x": 1120,
+     "y": 1600
+    },
+    {
+     "x": 1280,
+     "y": 1600
+    },
+    {
+     "x": 1440,
+     "y": 1600
+    },
+    {
+     "x": 1600,
+     "y": 1600
+    },
+    {
+     "x": 1760,
+     "y": 1600
+    },
+    {
+     "x": 1920,
+     "y": 1600
+    },
+    {
+     "x": 2080,
+     "y": 1600
+    },
+    {
+     "x": 0,
+     "y": 1760
+    },
+    {
+     "x": 160,
+     "y": 1760
+    },
+    {
+     "x": 320,
+     "y": 1760
+    },
+    {
+     "x": 480,
+     "y": 1760
+    },
+    {
+     "x": 640,
+     "y": 1760
+    }
+   ],
+   "source": "smoking Northeast",
+   "source_frames": 49,
+   "kept": [
+    0,
+    4,
+    8,
+    12,
+    16,
+    20,
+    24,
+    29,
+    33,
+    37,
+    41,
+    45
+   ],
+   "stride": null,
+   "mirror_of": "smoke_northeast",
+   "flip": true
+  },
+  "sleep_left": {
+   "fps": 5,
+   "loop": false,
+   "facing": "left",
+   "frames": [
+    {
+     "x": 160,
+     "y": 1120
+    },
+    {
+     "x": 320,
+     "y": 1120
+    },
+    {
+     "x": 480,
+     "y": 1120
+    },
+    {
+     "x": 640,
+     "y": 1120
+    },
+    {
+     "x": 800,
+     "y": 1120
+    },
+    {
+     "x": 960,
+     "y": 1120
+    }
+   ],
+   "source": "top down courier-iso_custom_sleep_right-v1.json",
+   "source_frames": 56,
+   "kept": [
+    0,
+    11,
+    22,
+    33,
+    44,
+    55
+   ],
+   "stride": null,
+   "mirror_of": "sleep_right",
+   "flip": true
+  },
+  "sleep_southwest": {
+   "fps": 5,
+   "loop": false,
+   "facing": "southwest",
+   "frames": [
+    {
+     "x": 1120,
+     "y": 1120
+    },
+    {
+     "x": 1280,
+     "y": 1120
+    },
+    {
+     "x": 1440,
+     "y": 1120
+    },
+    {
+     "x": 1600,
+     "y": 1120
+    },
+    {
+     "x": 1760,
+     "y": 1120
+    },
+    {
+     "x": 1920,
+     "y": 1120
+    }
+   ],
+   "source": "top down courier-iso_custom_sleep_southeast-v1.json",
+   "source_frames": 56,
+   "kept": [
+    0,
+    11,
+    22,
+    33,
+    44,
+    55
+   ],
+   "stride": null,
+   "mirror_of": "sleep_southeast",
+   "flip": true
+  },
+  "sleep_northwest": {
+   "fps": 5,
+   "loop": false,
+   "facing": "northwest",
+   "frames": [
+    {
+     "x": 2080,
+     "y": 1120
+    },
+    {
+     "x": 0,
+     "y": 1280
+    },
+    {
+     "x": 160,
+     "y": 1280
+    },
+    {
+     "x": 320,
+     "y": 1280
+    },
+    {
+     "x": 480,
+     "y": 1280
+    },
+    {
+     "x": 640,
+     "y": 1280
+    }
+   ],
+   "source": "top down courier-iso_custom_sleep_northeast-v1.json",
+   "source_frames": 56,
+   "kept": [
+    0,
+    11,
+    22,
+    33,
+    44,
+    55
+   ],
+   "stride": null,
+   "mirror_of": "sleep_northeast",
+   "flip": true
+  },
+  "dash_left": {
+   "fps": 16,
+   "loop": false,
+   "facing": "left",
+   "frames": [
+    {
+     "x": 160,
+     "y": 480
+    },
+    {
+     "x": 320,
+     "y": 480
+    },
+    {
+     "x": 480,
+     "y": 480
+    },
+    {
+     "x": 640,
+     "y": 480
+    },
+    {
+     "x": 800,
+     "y": 480
+    },
+    {
+     "x": 960,
+     "y": 480
+    }
+   ],
+   "source": "dash Right",
+   "source_frames": 64,
+   "kept": [
+    0,
+    13,
+    25,
+    38,
+    50,
+    63
+   ],
+   "stride": null,
+   "mirror_of": "dash_right",
+   "flip": true
+  },
+  "run_left": {
+   "fps": 21,
+   "loop": true,
+   "facing": "left",
+   "frames": [
+    {
+     "x": 800,
+     "y": 640
+    },
+    {
+     "x": 960,
+     "y": 640
+    },
+    {
+     "x": 1120,
+     "y": 640
+    },
+    {
+     "x": 1280,
+     "y": 640
+    },
+    {
+     "x": 1440,
+     "y": 640
+    },
+    {
+     "x": 1600,
+     "y": 640
+    },
+    {
+     "x": 1760,
+     "y": 640
+    },
+    {
+     "x": 1920,
+     "y": 640
+    },
+    {
+     "x": 2080,
+     "y": 640
+    },
+    {
+     "x": 0,
+     "y": 800
+    },
+    {
+     "x": 160,
+     "y": 800
+    },
+    {
+     "x": 320,
+     "y": 800
+    }
+   ],
+   "source": "iso_run_right_right",
+   "source_frames": 49,
+   "kept": [
+    0,
+    2,
+    4,
+    6,
+    7,
+    9,
+    11,
+    13,
+    15,
+    17,
+    19,
+    21
+   ],
+   "stride": 22.4,
+   "cycle_px": 191.5,
+   "mirror_of": "run_right",
+   "flip": true
+  },
+  "walk_left": {
+   "fps": 21,
+   "loop": true,
+   "facing": "left",
+   "frames": [
+    {
+     "x": 480,
+     "y": 800
+    },
+    {
+     "x": 640,
+     "y": 800
+    },
+    {
+     "x": 800,
+     "y": 800
+    },
+    {
+     "x": 960,
+     "y": 800
+    },
+    {
+     "x": 1120,
+     "y": 800
+    },
+    {
+     "x": 1280,
+     "y": 800
+    },
+    {
+     "x": 1440,
+     "y": 800
+    },
+    {
+     "x": 1600,
+     "y": 800
+    },
+    {
+     "x": 1760,
+     "y": 800
+    },
+    {
+     "x": 1920,
+     "y": 800
+    },
+    {
+     "x": 2080,
+     "y": 800
+    },
+    {
+     "x": 0,
+     "y": 960
+    }
+   ],
+   "source": "iso_walk_right_right",
+   "source_frames": 64,
+   "kept": [
+    0,
+    3,
+    5,
+    8,
+    10,
+    13,
+    15,
+    18,
+    20,
+    23,
+    25,
+    28
+   ],
+   "stride": 30.3,
+   "cycle_px": 121.9,
+   "mirror_of": "walk_right",
+   "flip": true
+  },
+  "punch_left": {
+   "fps": 12,
+   "loop": false,
+   "facing": "left",
+   "frames": [
+    {
+     "x": 2080,
+     "y": 480
+    },
+    {
+     "x": 0,
+     "y": 640
+    },
+    {
+     "x": 160,
+     "y": 640
+    },
+    {
+     "x": 320,
+     "y": 640
+    },
+    {
+     "x": 480,
+     "y": 640
+    },
+    {
+     "x": 640,
+     "y": 640
+    }
+   ],
+   "source": "Punch Right",
+   "source_frames": 64,
+   "kept": [
+    0,
+    13,
+    25,
+    38,
+    50,
+    63
+   ],
+   "stride": null,
+   "mirror_of": "punch_right",
+   "flip": true
+  }
+ }
+}
