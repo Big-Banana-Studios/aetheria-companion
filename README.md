@@ -7,7 +7,7 @@ in one voice. No backend, no keys, works offline after the first load.
 - **Brain:** Gemma 4 E2B (`onnx-community/gemma-4-E2B-it-ONNX`, Apache-2.0)
   on WebGPU via Transformers.js. Your recorded utterance goes in as audio; a
   camera still goes in as an image. One model does hearing, seeing and talking.
-- **Voice:** Kokoro-82M (`kokoro-js`), one pinned voice, streamed per sentence.
+- **Voice:** Kokoro-82M (`kokoro-js`), one pinned voice (Nicole by default), streamed per sentence.
 - **Ears:** Silero VAD, running all the time so you can interrupt her.
 - **Face:** the courier's own sprites from the game, on a canvas, with the
   stone aura ported from `aura.gd`.
@@ -170,10 +170,29 @@ device experiments) are accepted; `--keep` leaves Chrome and the server up.
   her to look: the model replies with a `[look]` tag, the app grabs a still
   and asks again. One still per request; frames are never streamed. Only the
   full brain can see.
-- **Aura colour** follows the regime chosen in Settings, or, when the
-  Aetheria Reader is served from the same origin, the regime of the
-  frequency it last played (`aetheria_checkpoint.selectedFrequency` in
-  `localStorage`). Default HEART.
+- **The district follows the conversation.** Each reply also carries a
+  depth tag: `[small]` for chit-chat puts her in the Street Market (HEART),
+  `[mid]` for the personal and practical in the Undercity (GUT), `[deep]`
+  for the big questions in the Stack (HEAD). When the depth changes she
+  walks off the edge towards the new district (the Undercity is down the
+  street to the left, the Stack up to the right), the street regenerates
+  while she is out of sight, she walks back in to the middle, and only then
+  does the reply play; the speech synthesized during the walk is held, not
+  lost. Interrupting her mid-walk puts her back in the middle with the
+  street unchanged. Picking a district in Settings pins it: when you press
+  Done she walks there the same way, and the next turn carries a note
+  telling the model which register to take (the Market keeps it light, the
+  Undercity gets personal with a little grit, the Stack goes for the big
+  questions). Settings can also follow the Aetheria Reader's last frequency
+  when the Reader is served from the same origin
+  (`aetheria_checkpoint.selectedFrequency` in `localStorage`).
+- **She asks back.** The persona asks her to end about half her replies
+  with one short question she actually wants answered.
+- **Quiet rooms.** The captured utterance is peak-normalized (up to 8×)
+  before Gemma and Moonshine hear it, so speech kept low for someone
+  sleeping nearby still transcribes. Settings → Transcripts switches to
+  Moonshine base, which is more accurate on quiet speech at the cost of a
+  bigger download.
 - **The street:** she stands on a wet street at night, a runtime port of the
   game's title-card city (`tools/make_skyline.py`): sky and cloud, three
   depths of towers with lit windows drawn additively, neon signs with the

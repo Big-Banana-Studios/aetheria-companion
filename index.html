@@ -112,12 +112,19 @@
         <label class="row"><input id="set-scene" type="checkbox" checked /> The street behind her (rain, neon, the city)</label>
         <label class="row"><input id="set-sampling" type="checkbox" /> Creative sampling (more varied, less predictable)</label>
 
-        <label>Aura
+        <label>District and aura
           <select id="set-regime">
-            <option value="auto">Follow the Reader (or HEART)</option>
+            <option value="topic">Follow the conversation: small talk in the Market, mid in the Undercity, deep in the Stack</option>
+            <option value="reader">Follow the Reader's frequency (or HEART)</option>
             <option value="GUT">GUT · Undercity · ember</option>
             <option value="HEART">HEART · Street Market · rose</option>
             <option value="HEAD">HEAD · The Stack · white light</option>
+          </select>
+        </label>
+        <label>Transcripts
+          <select id="set-stt">
+            <option value="tiny">Moonshine tiny (fast, about 80 MB)</option>
+            <option value="base">Moonshine base (more accurate with quiet speech, bigger download; takes effect after a reload)</option>
           </select>
         </label>
 

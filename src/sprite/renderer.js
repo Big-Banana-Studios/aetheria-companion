@@ -132,6 +132,39 @@ export class SpriteRenderer {
     this.gesture("enter");
   }
 
+  /**
+   * The conversation moved to another district. She walks off the edge
+   * towards it (the Undercity is down the street to the left, the Stack up
+   * to the right), the street changes while she is out of sight, and she
+   * walks back in to the middle. Resolves true when she is there, false if
+   * something cut the walk short (the street is then left as it was).
+   * @param {"GUT"|"HEART"|"HEAD"} regime
+   * @param {string} colour aura colour for that regime
+   */
+  travel(regime, colour) {
+    return new Promise((resolve) => {
+      const switchNow = () => {
+        this.scene.setRegime(regime);
+        this.setAuraColour(colour);
+      };
+      if (!this.scene.enabled || !this.vw) {
+        switchNow();
+        resolve(true);
+        return;
+      }
+      const order = { GUT: 0, HEART: 1, HEAD: 2 };
+      const dir = Math.sign((order[regime] ?? 1) - (order[this.scene.regime] ?? 1)) || 1;
+      const clip = dir > 0 ? "walk_right" : "walk_left";
+      const steps = [
+        { clip, to: dir > 0 ? "offright" : "offleft" },
+        { switch: true },
+        { clip, from: dir > 0 ? "offleft" : "offright", to: 0 },
+      ];
+      this.seq = { name: "travel", steps, i: -1, t: 0, dur: 0, x0: this.x, x1: this.x, side: 0, sticky: true, onSwitch: switchNow, onDone: () => resolve(true), onCancel: () => resolve(false) };
+      this._nextStep();
+    });
+  }
+
   /** The user has been talking a while: she opens up. */
   listenLong() {
     const st = this.m.states.listening;
@@ -175,6 +208,7 @@ export class SpriteRenderer {
   gesture(name) {
     const steps = this.gestures[name];
     if (!steps || !steps.length) return;
+    if (this.seq?.sticky) return; // she is walking to another district; nothing interrupts that but the user
     let side = 0;
     if (steps.some((s) => s.to === "sign" || s.hit === "sign")) {
       // a gesture aimed at a sign: the nearer one, mirrored if it is on her left
@@ -225,8 +259,13 @@ export class SpriteRenderer {
     const step = this.seq?.steps[this.seq.i];
     const turnState = name === "idle" || name === "speaking" || name === "thinking";
     const keep =
-      step && turnState && ((step.min != null && this.seq.t < step.min) || (step.until === "turn_end" && name !== "idle"));
+      step && turnState && (this.seq.sticky || (step.min != null && this.seq.t < step.min) || (step.until === "turn_end" && name !== "idle"));
     if (keep) return;
+    if (this.seq?.sticky) {
+      // a walk between districts, cut short: she is back in the middle, the street unchanged
+      this.seq.onCancel?.();
+      this.x = 0;
+    }
     this.seq = null;
     this.frameSubset = null;
     if (name === "idle_long") {
@@ -346,9 +385,16 @@ export class SpriteRenderer {
       this._play(this._baseClip());
       if (this.state === "idle") this._scheduleFidget(this.m.states.idle);
       if (this.state === "thinking") this.fidgetAt = this.t + 2.5 + Math.random() * 2.5;
+      seq.onDone?.();
       return;
     }
     const step = seq.steps[seq.i];
+    if (step.switch) {
+      // off screen: the street changes, then straight on to the next step
+      seq.onSwitch?.();
+      this._nextStep();
+      return;
+    }
     const clipName = this._mirrored(step.clip, seq.side);
     const clip = this.m.clips[clipName];
     if (!clip) {
@@ -639,8 +685,8 @@ export class SpriteRenderer {
       ctx.drawImage(this.mouthImg, k * box.w, 0, box.w, box.h, x - Math.floor(box.w / 2), y - Math.floor(box.h / 2), box.w, box.h);
       return;
     }
-    const w = Math.round(box.w * (0.35 + 0.4 * open));
-    const h = Math.max(1, Math.round(1 + (box.h - 3) * open));
+    const w = Math.round(box.w * (0.3 + 0.2 * open)); // about a third of the first cut: speech, not shouting
+    const h = Math.max(1, Math.round(1 + (box.h - 3) * open * 0.35));
     const left = x - Math.floor(w / 2);
     const top = y - 1;
     ctx.fillStyle = this.m.mouth.dark;

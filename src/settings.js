@@ -3,9 +3,24 @@
 const KEY = "companion.settings";
 
 export const REGIMES = {
-  GUT: { name: "GUT", colour: "#ff8a3c", district: "Undercity" },
-  HEART: { name: "HEART", colour: "#ff4f8b", district: "Street Market" },
-  HEAD: { name: "HEAD", colour: "#37e6f0", district: "The Stack" },
+  GUT: {
+    name: "GUT",
+    colour: "#ff8a3c",
+    district: "Undercity",
+    register: "the Undercity: the personal and the practical, honest, a little more grit and cheek, feelings said plainly",
+  },
+  HEART: {
+    name: "HEART",
+    colour: "#ff4f8b",
+    district: "Street Market",
+    register: "the Street Market: small talk, warm and quick, people close by, easy to laugh",
+  },
+  HEAD: {
+    name: "HEAD",
+    colour: "#37e6f0",
+    district: "The Stack",
+    register: "the Stack: the big questions, clear and unhurried, exact words, no filler",
+  },
 };
 
 // The Reader's 27 frequencies, by regime (Aetheria/constants.ts LO_SHU_FREQ_POSITIONS).
@@ -17,7 +32,7 @@ const BANDS = [
 
 export const DEFAULTS = {
   brain: "gemma", // gemma | text | lab
-  voice: "af_heart",
+  voice: "af_nicole", // the one that hits for her
   speed: 1.0,
   mode: "vad", // vad | ptt
   sensitivity: 50, // 0..100
@@ -25,7 +40,8 @@ export const DEFAULTS = {
   smokeBreaks: true,
   scene: true, // the rainy street behind her
   sampling: false,
-  regime: "auto", // auto | GUT | HEART | HEAD
+  regime: "topic", // topic (the conversation's depth) | reader | GUT | HEART | HEAD
+  sttModel: "tiny", // tiny | base: Moonshine for the transcript strip
   persona: null, // null = default persona.md
   lab: { url: "", model: "", apiKey: "" },
   debug: false,
@@ -37,6 +53,8 @@ export function loadSettings() {
     const raw = localStorage.getItem(KEY);
     if (!raw) return structuredClone(DEFAULTS);
     const s = JSON.parse(raw);
+    if (s.regime === "auto") s.regime = "topic"; // older builds
+    delete s.deviceMap; // an experiment flag that once leaked into storage
     return { ...structuredClone(DEFAULTS), ...s, lab: { ...DEFAULTS.lab, ...(s.lab || {}) } };
   } catch {
     return structuredClone(DEFAULTS);
@@ -63,13 +81,19 @@ export function vadThresholds(sensitivity) {
 }
 
 /**
- * Which regime colours the aura. Explicit choice wins; otherwise follow the
- * Reader's selected frequency if its checkpoint is in this origin's
- * localStorage; otherwise HEART - connection is what a companion is for.
+ * Which regime she stands in (aura colour, the street). An explicit choice
+ * wins; "topic" follows the conversation's depth (`topicRegime`, HEART until
+ * the first reply); "reader" follows the Reader's selected frequency if its
+ * checkpoint is in this origin's localStorage; otherwise HEART - connection
+ * is what a companion is for.
  */
-export function resolveRegime(settings) {
-  if (settings.regime && settings.regime !== "auto" && REGIMES[settings.regime]) {
+export function resolveRegime(settings, topicRegime = null) {
+  if (settings.regime && REGIMES[settings.regime]) {
     return { ...REGIMES[settings.regime], source: "settings" };
+  }
+  if (settings.regime === "topic" || !settings.regime) {
+    const r = REGIMES[topicRegime] || REGIMES.HEART;
+    return { ...r, source: topicRegime ? "the conversation" : "default" };
   }
   try {
     const raw = localStorage.getItem("aetheria_checkpoint");

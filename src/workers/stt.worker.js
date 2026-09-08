@@ -8,17 +8,18 @@
 import "./ort-paths.js";
 import { pipeline } from "@huggingface/transformers";
 
-const STT_ID = "onnx-community/moonshine-tiny-ONNX";
+const STT_IDS = { tiny: "onnx-community/moonshine-tiny-ONNX", base: "onnx-community/moonshine-base-ONNX" };
 let transcriber = null;
 let chain = Promise.resolve();
 const post = (m) => self.postMessage(m);
 
-async function load({ device = "webgpu" }) {
+async function load({ device = "webgpu", model = "tiny" }) {
+  const id = STT_IDS[model] || STT_IDS.tiny;
   try {
-    transcriber = await pipeline("automatic-speech-recognition", STT_ID, {
+    transcriber = await pipeline("automatic-speech-recognition", id, {
       device,
       dtype: device === "webgpu" ? { encoder_model: "fp32", decoder_model_merged: "q4" } : { encoder_model: "fp32", decoder_model_merged: "q8" },
-      progress_callback: (p) => post({ type: "progress", model: "moonshine-tiny", ...p }),
+      progress_callback: (p) => post({ type: "progress", model: `moonshine-${model}`, ...p }),
     });
     await transcriber(new Float32Array(16000));
     post({ type: "ready" });

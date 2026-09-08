@@ -104,7 +104,24 @@ function dispatch() {
   const audio = BUFFER.slice(0, end);
   BUFFER.fill(0, 0, ptr);
   ptr = 0;
+  normalise(audio);
   post({ type: "speech_end", audio, seconds }, [audio.buffer]);
+}
+
+/**
+ * Quiet speech (someone napping in the next room) reaches the models as a
+ * whisper and is transcribed like one. Bring the utterance's peak up to a
+ * sensible level, with a cap so noise is not amplified into speech.
+ */
+function normalise(audio) {
+  let peak = 0;
+  for (let i = 0; i < audio.length; i++) {
+    const v = Math.abs(audio[i]);
+    if (v > peak) peak = v;
+  }
+  if (peak < 0.02 || peak >= 0.6) return;
+  const gain = Math.min(8, 0.7 / peak);
+  for (let i = 0; i < audio.length; i++) audio[i] *= gain;
 }
 
 async function onAudio(buffer) {

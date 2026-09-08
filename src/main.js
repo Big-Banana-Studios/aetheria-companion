@@ -48,9 +48,13 @@ async function main() {
   window.__gpu = gpu;
   await loadSprite();
   if (q0.has("debug")) settings.debug = true;
-  // experiments: ?devices=embed_tokens:wasm,decoder_model_merged:webgpu
+  // experiments: ?devices=embed_tokens:wasm,decoder_model_merged:webgpu (this run only, never saved)
+  delete settings.deviceMap;
   if (q0.get("devices")) {
-    settings.deviceMap = Object.fromEntries(q0.get("devices").split(",").map((kv) => kv.split(":")));
+    Object.defineProperty(settings, "deviceMap", {
+      value: Object.fromEntries(q0.get("devices").split(",").map((kv) => kv.split(":"))),
+      enumerable: false, // JSON.stringify skips it, so it cannot outlive the URL
+    });
   }
 }
 
@@ -75,6 +79,11 @@ function stagePreview(q) {
   if (!q.has("noenter") && state === "idle") renderer.enter();
   if (state === "listening") setTimeout(() => renderer.listenLong(), (renderer.m.states.listening?.long_after ?? 5) * 1000);
   if (q.get("gesture")) setTimeout(() => renderer.gesture(q.get("gesture")), 900);
+  if (q.get("travel")) {
+    // the conversation changed depth: she walks off to the other district and back in
+    const to = q.get("travel");
+    setTimeout(() => renderer.travel(to, REGIMES[to]?.colour || "#ff4f8b").then(() => showRegimeChip({ ...REGIMES[to], source: "preview" })), 1200);
+  }
   if (q.has("voice")) {
     // a fake voice, so the mouth, the aura and the sign can be seen responding
     let ph = 0;
@@ -136,10 +145,14 @@ function loadImage(src) {
 }
 
 function applyRegime() {
-  const r = resolveRegime(settings);
+  const r = resolveRegime(settings, companion?.topicRegime);
   renderer?.setAuraColour(r.colour);
   renderer?.setRegime(r.name);
   renderer?.setSceneEnabled(settings.scene !== false);
+  showRegimeChip(r);
+}
+
+function showRegimeChip(r) {
   const chip = $("regime-chip");
   chip.textContent = r.name;
   chip.style.color = r.colour;
@@ -308,6 +321,8 @@ function wireCompanion() {
   companion.addEventListener("snapUsed", () => $("cam-wrap").classList.remove("armed"));
   companion.addEventListener("tick", () => debug?.render());
   companion.addEventListener("mode", () => applyModeUI());
+  // the conversation moved her to another district: the chip and the accent follow
+  companion.addEventListener("regime", (e) => showRegimeChip({ ...REGIMES[e.detail], source: "the conversation" }));
 }
 
 function addOrUpdateLine({ id, role, text, pending, streaming, interrupted, image }) {
@@ -441,6 +456,7 @@ function openSettings() {
   $("set-scene").checked = settings.scene !== false;
   $("set-sampling").checked = !!settings.sampling;
   $("set-regime").value = settings.regime;
+  $("set-stt").value = settings.sttModel || "tiny";
   $("set-persona").value = settings.persona || DEFAULT_PERSONA;
   $("set-lab-url").value = settings.lab.url;
   $("set-lab-model").value = settings.lab.model;
@@ -493,7 +509,17 @@ function bindSettings() {
   $("set-regime").addEventListener("change", (e) => {
     settings.regime = e.target.value;
     saveSettings(settings);
-    applyRegime();
+    if (!companion || !REGIMES[settings.regime]) applyRegime(); // "topic"/"reader": nothing to walk to yet
+  });
+  // Done: if a district was picked, she walks there and takes its register with her
+  $("settings").addEventListener("close", () => {
+    if (!companion) return;
+    if (REGIMES[settings.regime]) companion.moveTo(settings.regime);
+    else applyRegime();
+  });
+  $("set-stt").addEventListener("change", (e) => {
+    settings.sttModel = e.target.value;
+    saveSettings(settings);
   });
   let personaTimer = 0;
   $("set-persona").addEventListener("input", (e) => {

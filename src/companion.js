@@ -7,9 +7,9 @@ import { Player } from "./audio/player.js";
 import { SentenceSplitter } from "./splitter.js";
 import { Memory } from "./memory.js";
 import { Timings } from "./debug.js";
-import { buildSystemPrompt, DEFAULT_PERSONA, MOODS } from "./persona.js";
+import { buildSystemPrompt, DEFAULT_PERSONA, MOODS, DEPTHS } from "./persona.js";
 import { streamChat } from "./lab.js";
-import { vadThresholds } from "./settings.js";
+import { vadThresholds, REGIMES } from "./settings.js";
 
 const MOOD_TAG = /^\s*(?:\[([a-z]+)\]\s*)+/i;
 const LOOK_TAG = /\[look\]/gi;
@@ -31,6 +31,8 @@ export class Companion extends EventTarget {
     this.voices = {};
     this.pendingImage = null;
     this.paused = false;
+    this.topicRegime = null; // where the conversation has put her (null = not yet said)
+    this.hint = null; // a note for the model with the next turn (a district the user chose)
     this.idleSince = performance.now();
     this.camStream = null;
     this.video = null;
@@ -40,6 +42,9 @@ export class Companion extends EventTarget {
     this.mic = new Mic((chunk) => this.vad?.postMessage({ type: "audio", buffer: chunk }, [chunk.buffer]));
     this.player = new Player({
       onChunkStart: (id, seq) => this._onChunkStart(id, seq),
+      onChunkEnd: (id) => {
+        if (this.current?.id === id) this.current.played++;
+      },
       onDrained: () => this._onDrained(),
     });
     this._mouthTimer = 0;
@@ -109,7 +114,7 @@ export class Companion extends EventTarget {
       system: this.systemPrompt(),
       primer: this.memory.asMessages(12),
     });
-    this.stt?.postMessage({ type: "load", device });
+    this.stt?.postMessage({ type: "load", device, model: this.settings.sttModel || "tiny" });
     await allReady;
   }
 
@@ -165,8 +170,31 @@ export class Companion extends EventTarget {
     this.llm?.postMessage({ type: "reset", system: this.systemPrompt(), primer: this.memory.asMessages(12) });
   }
 
+  /**
+   * The user chose a district in Settings. She walks there (left for the
+   * Undercity, right for the Stack), and the model is told the register to
+   * take with the next turn. While a district is pinned in Settings the
+   * conversation's own depth tags do not move her.
+   */
+  moveTo(regime) {
+    if (!REGIMES[regime]) return;
+    this.hint = `(Note: you are in ${REGIMES[regime].register}. Take that register with you.)`;
+    if (regime === this.renderer.scene.regime) return;
+    this.topicRegime = regime;
+    this.dispatchEvent(new CustomEvent("regime", { detail: regime }));
+    const cur = this.current;
+    const walk = this.renderer.travel(regime, REGIMES[regime].colour);
+    if (cur && !cur.finished) {
+      cur.travel = walk.then(() => {
+        cur.travel = null;
+        for (const m of cur.held.splice(0)) this._enqueue(cur, m);
+      });
+    }
+  }
+
   clearMemory() {
     this.memory.clear();
+    this.topicRegime = null;
     this.llm?.postMessage({ type: "reset", system: this.systemPrompt(), primer: [] });
     this.dispatchEvent(new CustomEvent("cleared"));
   }
@@ -191,6 +219,7 @@ export class Companion extends EventTarget {
   interrupt() {
     if (!this.current || this.current.finished) return;
     this.current.cancelled = true;
+    this.current.held.length = 0;
     this.current.controller?.abort();
     this.llm.postMessage({ type: "interrupt" });
     this.tts.postMessage({ type: "cancel" });
@@ -264,7 +293,12 @@ export class Companion extends EventTarget {
       sentences: [], // text handed to TTS, by seq
       spokenSeq: -1, // the last sentence whose audio has started
       llmDone: false,
-      audioQueued: 0,
+      sent: 0, // sentences handed to TTS
+      got: 0, // audio chunks back (or failed)
+      played: 0, // chunks played to the end
+      held: [], // audio waiting for her to arrive in a new district
+      travel: null,
+      depth: null,
       cancelled: false,
       finished: false,
       hadImage: !!image,
@@ -292,7 +326,11 @@ export class Companion extends EventTarget {
       const copy = audio.slice();
       this.stt.postMessage({ type: "transcribe", id, audio: copy }, [copy.buffer]);
     }
-    const msg = { type: "turn", id, audio, image, text, sampling: !!this.settings.sampling, primer: this.memory.asMessages(12) };
+    // a note for the model rides along with the turn but is neither shown nor remembered
+    const hint = this.hint;
+    this.hint = null;
+    const modelText = [text, hint].filter(Boolean).join("\n") || null;
+    const msg = { type: "turn", id, audio, image, text: modelText, sampling: !!this.settings.sampling, primer: this.memory.asMessages(12) };
     const transfer = [];
     if (audio) transfer.push(audio.buffer);
     if (image) transfer.push(image.data.buffer);
@@ -318,6 +356,10 @@ export class Companion extends EventTarget {
       }
       this.timings.mark("sent");
       const messages = [{ role: "system", content: this.systemPrompt() }, ...this.memory.asMessages(12)];
+      if (this.hint) {
+        messages[messages.length - 1].content += `\n${this.hint}`;
+        this.hint = null;
+      }
       cur.controller = new AbortController();
       const lab = this.settings.lab;
       const full = await streamChat({
@@ -366,9 +408,11 @@ export class Companion extends EventTarget {
     cur.raw += piece;
     const head = cur.raw.match(MOOD_TAG);
     if (head && !cur.mood) {
-      const tags = [...cur.raw.matchAll(/\[([a-z]+)\]/gi)].map((m) => m[1].toLowerCase());
+      const tags = [...head[0].matchAll(/\[([a-z]+)\]/gi)].map((m) => m[1].toLowerCase());
       cur.mood = tags.find((t) => MOODS.includes(t)) || "calm";
       this.renderer.setMood(cur.mood);
+      cur.depth = tags.find((t) => t in DEPTHS) || null;
+      if (cur.depth) this._topic(cur, DEPTHS[cur.depth]);
     }
     if (LOOK_TAG.test(cur.raw)) cur.look = true;
     LOOK_TAG.lastIndex = 0;
@@ -405,9 +449,39 @@ export class Companion extends EventTarget {
     const text = sentence.replace(/\s+/g, " ").trim();
     if (!text || !/[a-z0-9]/i.test(text)) return;
     if (cur.seq === 0) this.timings.mark("first_sent", cur.id);
-    cur.audioQueued++;
+    cur.sent++;
     cur.sentences[cur.seq] = text;
     this.tts.postMessage({ type: "say", id: cur.id, seq: cur.seq++, text });
+  }
+
+  /**
+   * The conversation changed depth. If the district follows the conversation
+   * and this is a different one, she walks off towards it, the street
+   * changes while she is off screen, she walks back in, and only then does
+   * the reply play. Audio synthesized meanwhile is held, not lost.
+   */
+  _topic(cur, regime) {
+    if (this.settings.regime !== "topic" || !REGIMES[regime]) return;
+    if (regime === (this.topicRegime || "HEART")) {
+      this.topicRegime = regime;
+      return;
+    }
+    this.topicRegime = regime;
+    this.dispatchEvent(new CustomEvent("regime", { detail: regime }));
+    cur.travel = this.renderer.travel(regime, REGIMES[regime].colour).then(() => {
+      cur.travel = null;
+      for (const m of cur.held.splice(0)) this._enqueue(cur, m);
+    });
+  }
+
+  _enqueue(cur, m) {
+    if (m.seq === 0) this.timings.mark("first_audio", m.id);
+    this.player.enqueue(m.id, m.seq, m.audio);
+  }
+
+  /** Everything she was given to say has been said. */
+  _allPlayed(cur) {
+    return cur.llmDone && cur.got >= cur.sent && cur.played >= cur.got && !cur.held.length && !cur.travel;
   }
 
   _onDone({ id, text, interrupted, tokens, blank }) {
@@ -442,8 +516,8 @@ export class Companion extends EventTarget {
     } else if (blank) {
       this.dispatchEvent(new CustomEvent("line", { detail: { id, role: "sys", text: "didn't catch that" } }));
     }
-    if (cur.audioQueued === 0 || cur.cancelled) this._finish(cur, { blank });
-    // else: _onDrained finishes the turn when the last chunk has played
+    if (cur.cancelled || cur.sent === 0 || (this._allPlayed(cur) && !this.player.playing)) this._finish(cur, { blank });
+    // else: _onDrained finishes the turn once the LAST chunk has played
   }
 
   _setUserText(cur, text) {
@@ -500,8 +574,10 @@ export class Companion extends EventTarget {
   _onDrained() {
     const cur = this.current;
     if (!cur) return;
-    if (cur.llmDone) this._finish(cur);
-    else this._setState("thinking"); // generation outran playback; waiting on more
+    // The queue is empty, but a sentence may still be on its way from TTS:
+    // finishing here used to drop the end of her reply. Wait for all of it.
+    if (this._allPlayed(cur)) this._finish(cur);
+    else this._setState("thinking"); // waiting on more audio (or on her walk)
   }
 
   _tick() {
@@ -601,16 +677,18 @@ export class Companion extends EventTarget {
       case "audio": {
         const cur = this.current;
         if (!cur || cur.id !== m.id || cur.cancelled) return;
-        if (m.seq === 0) this.timings.mark("first_audio", m.id);
-        this.player.enqueue(m.id, m.seq, m.audio);
+        cur.got++;
+        if (cur.travel) cur.held.push(m); // she is still walking to the new district
+        else this._enqueue(cur, m);
         break;
       }
       case "error":
         if (m.id != null) {
           const cur = this.current;
           if (cur && cur.id === m.id) {
-            cur.audioQueued = Math.max(0, cur.audioQueued - 1);
-            if (cur.llmDone && cur.audioQueued === 0 && !this.player.playing) this._finish(cur);
+            cur.got++;
+            cur.played++; // nothing to play for this one
+            if (this._allPlayed(cur) && !this.player.playing) this._finish(cur);
           }
         }
         this._error(m.message);

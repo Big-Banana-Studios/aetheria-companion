@@ -48,6 +48,7 @@ Gestures (played over a state, from `courier.json` → `gestures`):
 | `lookaway` / `lookup` | `idle_northeast` / `idle_up` | thinking and idle fidgets |
 | `flinch` / `startle` | `hurt_down` (recoil frames) | interrupted, error, woken from a nap |
 | `enter` | `run_right` from off-screen left at the measured run speed | app start |
+| travel (built in) | `walk_right`/`walk_left` off the edge, the street switches, walk back in to the middle | the conversation's depth changed district |
 
 Walking speed comes from `cycle_px` measured on the side-view clips (the
 game importer's method): one stride's foot spread, doubled, scaled.
