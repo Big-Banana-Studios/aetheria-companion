@@ -186,8 +186,17 @@ device experiments) are accepted; `--keep` leaves Chrome and the server up.
   questions). Settings can also follow the Aetheria Reader's last frequency
   when the Reader is served from the same origin
   (`aetheria_checkpoint.selectedFrequency` in `localStorage`).
-- **She asks back.** The persona asks her to end about half her replies
-  with one short question she actually wants answered.
+- **She asks back, but does not interview.** The app keeps score of whether
+  her last reply ended in a question and tells her, turn by turn, whether
+  one is welcome: never two running, and usually not; a small model told
+  "about half the time" asks every time.
+- **She speaks up herself.** After 45–90 s of quiet she says something
+  unprompted, then again every 2–4 minutes, and gives up after three with no
+  answer. Half the time it is one of the courier's own smoke-break thoughts
+  from the game, spoken straight in her voice while she takes a drag (the
+  model is told afterwards what she said); otherwise the model is asked for
+  a line of its own tied to the conversation, with no question in it. Off
+  in Settings if you would rather she waited.
 - **Quiet rooms.** The captured utterance is peak-normalized (up to 8×)
   before Gemma and Moonshine hear it, so speech kept low for someone
   sleeping nearby still transcribes. Settings → Transcripts switches to
@@ -272,6 +281,7 @@ src/scene/scene.js      the street: skyline port, rain, lightning, signs, lamp, 
 src/splitter.js         streaming sentence splitter
 src/settings.js         settings + Reader regime lookup
 src/memory.js           last 40 turns as text
+src/thoughts.js         the courier's smoke-break thoughts, for when it has been quiet
 src/debug.js            timings + overlay
 src/lab.js              streaming chat completions client
 tools/build_sprites.py  cuts the atlas + manifest from the courier packs (`npm run sprites`)

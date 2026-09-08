@@ -455,6 +455,7 @@ function openSettings() {
   $("set-vad-val").textContent = settings.sensitivity;
   $("set-barge").checked = !!settings.bargeIn;
   $("set-smoke").checked = !!settings.smokeBreaks;
+  $("set-initiate").checked = settings.initiate !== false;
   $("set-scene").checked = settings.scene !== false;
   $("set-sampling").checked = !!settings.sampling;
   $("set-regime").value = settings.regime;
@@ -497,6 +498,10 @@ function bindSettings() {
   });
   $("set-smoke").addEventListener("change", (e) => {
     settings.smokeBreaks = e.target.checked;
+    saveSettings(settings);
+  });
+  $("set-initiate").addEventListener("change", (e) => {
+    settings.initiate = e.target.checked;
     saveSettings(settings);
   });
   $("set-scene").addEventListener("change", (e) => {

@@ -232,6 +232,19 @@ try {
   } else log("no natural VAD turn arrived in time (the fake mic may not have looped yet)");
   await cdp.screenshot(join(root, "shots", "pc-test-3-natural.png"));
 
+  // speaking up on her own: both paths, called directly (the real trigger is
+  // 45-90 s of quiet, which the looping fake mic never leaves her)
+  while (!(phase() > 13 && phase() < 30)) await sleep(500);
+  await cdp.eval(`window.__companion._turn({ say: "I have started recognising people by the way they hold their hands.", mood: "thoughtful", silent: true })`);
+  log("her own thought, in her voice…");
+  const thought = await waitForTurn(cdp, 60000);
+  log("thought line:", JSON.stringify(thought.her), thought.state);
+  while (!(phase() > 13 && phase() < 30)) await sleep(500);
+  await cdp.eval(`window.__companion._initiate()`);
+  log("a check-in, hers or the model's…");
+  const checkin = await waitForTurn(cdp, 120000);
+  log("check-in line:", JSON.stringify(checkin.her), checkin.state);
+  log("timings:", checkin.debug.replace(/\n/g, " · "));
   for (const c of cdp.drain()) if (/error|exception|warn/i.test(c)) log("  console:", c.slice(0, 200));
   ok = !!reply.her;
   log(ok ? "PIPELINE OK" : "PIPELINE INCOMPLETE");

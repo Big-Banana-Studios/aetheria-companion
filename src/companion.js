@@ -10,6 +10,7 @@ import { Timings } from "./debug.js";
 import { buildSystemPrompt, DEFAULT_PERSONA, MOODS, DEPTHS } from "./persona.js";
 import { streamChat } from "./lab.js";
 import { vadThresholds, REGIMES } from "./settings.js";
+import { pickThought } from "./thoughts.js";
 
 const MOOD_TAG = /^\s*(?:\[([a-z]+)\]\s*)+/i;
 const LOOK_TAG = /\[look\]/gi;
@@ -32,8 +33,12 @@ export class Companion extends EventTarget {
     this.pendingImage = null;
     this.paused = false;
     this.topicRegime = null; // where the conversation has put her (null = not yet said)
-    this.hint = null; // a note for the model with the next turn (a district the user chose)
+    this.hints = []; // notes for the model with the next turn (a district the user chose, a line she said)
+    this.asked = []; // did her last replies end in a question? (the app paces her questions)
     this.idleSince = performance.now();
+    this.quietSince = performance.now(); // nobody has said anything since
+    this.nextInitiate = 45 + Math.random() * 45; // seconds of quiet before she speaks up
+    this.initiations = 0; // unanswered ones in a row
     this.camStream = null;
     this.video = null;
     this.dtype = "q4f16";
@@ -178,7 +183,7 @@ export class Companion extends EventTarget {
    */
   moveTo(regime) {
     if (!REGIMES[regime]) return;
-    this.hint = `(Note: you are in ${REGIMES[regime].register}. Take that register with you.)`;
+    this.hints.push(`(Note: you are in ${REGIMES[regime].register}. Take that register with you.)`);
     if (regime === this.renderer.scene.regime) return;
     this.topicRegime = regime;
     this.dispatchEvent(new CustomEvent("regime", { detail: regime }));
@@ -276,8 +281,15 @@ export class Companion extends EventTarget {
 
   // ------------------------------------------------------------ the turn
 
-  _turn({ audio = null, seconds = 0, image = null, text = null }) {
-    if (this.brain === "gemma" && !audio && !image && !text) return;
+  /**
+   * One turn. Normally the user's audio (or a typed text / a camera still).
+   * `silent` turns come from the app, not the user: nothing is shown or
+   * remembered on the user side. `say` skips the model and speaks the given
+   * line in her voice (a thought of hers), with `mood` for the gesture.
+   */
+  _turn({ audio = null, seconds = 0, image = null, text = null, say = null, mood = null, silent = false }) {
+    if (this.brain === "gemma" && !audio && !image && !text && !say) return;
+    if (audio) this.initiations = 0; // the user spoke: she is not talking to herself
     const id = ++this.turnId;
     this.timings.begin(id);
     this.timings.mark("vad_end");
@@ -306,17 +318,34 @@ export class Companion extends EventTarget {
       controller: null,
     };
     cur.splitter = new SentenceSplitter((sentence) => this._say(cur, sentence));
+    cur.silent = silent;
     this.current = cur;
 
-    const userTurn = this.memory.push({ id, role: "user", text: text || "", audioSeconds: seconds, image: !!image });
-    cur.userTurn = userTurn;
-    this.dispatchEvent(
-      new CustomEvent("line", {
-        detail: { id, role: "user", text: text || (audio ? `… ${seconds.toFixed(1)} s` : ""), pending: !!audio && !text, image: !!image },
-      }),
-    );
+    if (!silent) {
+      const userTurn = this.memory.push({ id, role: "user", text: text || "", audioSeconds: seconds, image: !!image });
+      cur.userTurn = userTurn;
+      this.dispatchEvent(
+        new CustomEvent("line", {
+          detail: { id, role: "user", text: text || (audio ? `… ${seconds.toFixed(1)} s` : ""), pending: !!audio && !text, image: !!image },
+        }),
+      );
+    }
 
     this._setState("thinking");
+    if (say) {
+      // her own line, in her voice, no model: a thought when it has been quiet
+      cur.mood = mood || "thoughtful";
+      this.renderer.setMood(cur.mood);
+      cur.raw = say;
+      cur.spoken = say;
+      cur.fed = say.length;
+      cur.splitter.push(say);
+      this.timings.mark("sent");
+      this._onDone({ id, text: say, tokens: 0, interrupted: false });
+      // the model did not hear this: it learns of it with the next real turn
+      this.hints.push(`(A moment ago you said, unprompted: "${say}")`);
+      return;
+    }
     if (this.brain === "lab") {
       this._labTurn(cur, audio, text);
       return;
@@ -326,10 +355,11 @@ export class Companion extends EventTarget {
       const copy = audio.slice();
       this.stt.postMessage({ type: "transcribe", id, audio: copy }, [copy.buffer]);
     }
-    // a note for the model rides along with the turn but is neither shown nor remembered
-    const hint = this.hint;
-    this.hint = null;
-    const modelText = [text, hint].filter(Boolean).join("\n") || null;
+    // notes for the model ride along with the turn but are neither shown nor remembered
+    const hints = this.hints.splice(0);
+    const pace = this._questionPacing();
+    if (pace) hints.push(pace);
+    const modelText = [text, ...hints].filter(Boolean).join("\n") || null;
     const msg = { type: "turn", id, audio, image, text: modelText, sampling: !!this.settings.sampling, primer: this.memory.asMessages(12) };
     const transfer = [];
     if (audio) transfer.push(audio.buffer);
@@ -356,9 +386,13 @@ export class Companion extends EventTarget {
       }
       this.timings.mark("sent");
       const messages = [{ role: "system", content: this.systemPrompt() }, ...this.memory.asMessages(12)];
-      if (this.hint) {
-        messages[messages.length - 1].content += `\n${this.hint}`;
-        this.hint = null;
+      const hints = this.hints.splice(0);
+      const pace = this._questionPacing();
+      if (pace) hints.push(pace);
+      if (hints.length) {
+        const last = messages[messages.length - 1];
+        if (last.role === "user") last.content += `\n${hints.join("\n")}`;
+        else messages.push({ role: "user", content: hints.join("\n") });
       }
       cur.controller = new AbortController();
       const lab = this.settings.lab;
@@ -424,6 +458,39 @@ export class Companion extends EventTarget {
     }
     cur.spoken = spoken;
     this._showHer(cur, true);
+  }
+
+  /**
+   * Whether a question is welcome this turn. A small model told "about half
+   * the time" asks every time, so the app keeps the score: never twice
+   * running, and usually not at all.
+   */
+  _questionPacing() {
+    const last = this.asked[this.asked.length - 1];
+    if (last === true) return "(No question this time. Answer, react, or offer a thought of your own.)";
+    const lastTwo = this.asked.slice(-2);
+    if (lastTwo.length === 2 && lastTwo.every((a) => a === false) && Math.random() < 0.6) {
+      return "(If there is something you want to know, you may end with one short question.)";
+    }
+    return Math.random() < 0.5 ? "(No question this time.)" : null;
+  }
+
+  /**
+   * It has been quiet. About half the time she thinks aloud, one of her own
+   * thoughts in her voice; otherwise the model is asked for a line of its
+   * own, tied to the conversation, with no question in it.
+   */
+  _initiate() {
+    this.initiations++;
+    this.nextInitiate = 120 + Math.random() * 120;
+    if (this.brain === "gemma" && Math.random() < 0.5) {
+      this._turn({ say: pickThought(), mood: "thoughtful", silent: true });
+      return;
+    }
+    this._turn({
+      text: "(It has been quiet a while. Say one or two sentences of your own: something you noticed just now, a thought, or a gentle check-in on them. No question.)",
+      silent: true,
+    });
   }
 
   /** What she has said so far, and what is generated but not yet spoken. */
@@ -512,6 +579,11 @@ export class Companion extends EventTarget {
     } else if (cur.spoken.trim()) {
       this.memory.push({ role: "assistant", text: cur.spoken.trim() + (interrupted ? " —" : ""), mood: cur.mood || "calm" });
       cur.interrupted = !!interrupted;
+      if (!cur.silent || cur.raw !== cur.spoken) {
+        // did she ask something? (her own thoughts do not count)
+        this.asked.push(/\?["')\]]*\s*$/.test(cur.spoken.trim()));
+        if (this.asked.length > 4) this.asked.shift();
+      }
       this._showHer(cur, false);
     } else if (blank) {
       this.dispatchEvent(new CustomEvent("line", { detail: { id, role: "sys", text: "didn't catch that" } }));
@@ -521,6 +593,7 @@ export class Companion extends EventTarget {
   }
 
   _setUserText(cur, text) {
+    if (cur.silent) return;
     if (cur.userTurn) this.memory.amendLast("user", { text });
     this.dispatchEvent(new CustomEvent("line", { detail: { id: cur.id, role: "user", text, pending: false } }));
   }
@@ -586,6 +659,10 @@ export class Companion extends EventTarget {
       // 30 fps mouth + listening glow
       this.renderer.setMouth(this.player.playing ? this.player.level() : 0);
       if (this.state === "listening") this.renderer.setListenLevel(Math.min(1, this.mic.level() * 4));
+      // she speaks up herself when it has been quiet, a few times at most
+      if (this.live && this.state === "idle" && !this.paused && this.settings.initiate !== false && this.initiations < 3) {
+        if ((performance.now() - this.quietSince) / 1000 >= this.nextInitiate) this._initiate();
+      }
       // a smoke break after a long quiet spell, and a nap if it goes on
       if (this.state === "idle" && this.settings.smokeBreaks) {
         const quiet = (performance.now() - this.idleSince) / 1000;
@@ -606,6 +683,7 @@ export class Companion extends EventTarget {
   _setState(name) {
     this.state = name;
     if (name === "idle") this.idleSince = performance.now();
+    if (name === "idle" || name === "listening") this.quietSince = performance.now();
     this.renderer.setState(name);
     clearTimeout(this._listenTimer);
     if (name === "listening") {

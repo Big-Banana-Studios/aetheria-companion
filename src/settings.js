@@ -38,6 +38,7 @@ export const DEFAULTS = {
   sensitivity: 50, // 0..100
   bargeIn: true,
   smokeBreaks: true,
+  initiate: true, // she speaks up when it has been quiet a while
   scene: true, // the rainy street behind her
   sampling: false,
   regime: "topic", // topic (the conversation's depth) | reader | GUT | HEART | HEAD
