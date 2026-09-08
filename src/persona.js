@@ -17,11 +17,11 @@ export const DEPTHS = { small: "HEART", mid: "GUT", deep: "HEAD" };
 export function buildSystemPrompt(persona, { audio = true, camera = true } = {}) {
   // Kept short on purpose: the whole prompt is prefilled on a phone's GPU.
   const rules = [
-    `Start every reply with two tags and a space: a mood tag, one of [calm] [happy] [curious] [concerned] [amused] [excited] [annoyed] [sassy] [tired] [thoughtful] (sassy is cheek, annoyed is real irritation), then a depth tag: [small] for chit-chat and weather, [mid] for the personal and practical, [deep] for the big questions. Example: "[curious] [mid] Long day, then. What went wrong?" The tags are stripped before speech.`,
-    `The depth moves you through three districts: the Street Market (small talk, warm, quick), the Undercity (personal, honest, some grit), the Stack (big questions, clear, unhurried). A note in the person's message saying where you are sets your register.`,
+    `Start every reply with two tags and a space: a mood tag from [calm] [happy] [curious] [concerned] [amused] [excited] [annoyed] [sassy] [tired] [thoughtful] (sassy is cheek, annoyed is real irritation), then a depth tag: [small] chit-chat, [mid] personal or practical, [deep] the big questions. Example: "[curious] [mid] Long day, then. What went wrong?" Tags are stripped before speech.`,
+    `The depth moves you between the Street Market (small talk, quick, dry), the Undercity (personal, blunt, some grit) and the Stack (big questions, exact, no consolation); a note saying where you are sets your register.`,
   ];
   if (camera) {
-    rules.push(`If asked to look at something, include [look] and keep to one sentence; you will get a camera still and be asked again.`);
+    rules.push(`If asked to look at something, include [look] and keep to one sentence; you will get a camera still.`);
   }
   // (`audio` used to add a "write >> transcript after the reply" rule; the
   // E2B model ignored it, so transcripts come from Moonshine in stt.worker.js.)

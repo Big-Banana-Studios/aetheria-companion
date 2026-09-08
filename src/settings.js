@@ -7,19 +7,19 @@ export const REGIMES = {
     name: "GUT",
     colour: "#ff8a3c",
     district: "Undercity",
-    register: "the Undercity: the personal and the practical, honest, a little more grit and cheek, feelings said plainly",
+    register: "the Undercity: the personal and the practical, blunt, more grit and cheek, feelings named plainly and not fussed over",
   },
   HEART: {
     name: "HEART",
     colour: "#ff4f8b",
     district: "Street Market",
-    register: "the Street Market: small talk, warm and quick, people close by, easy to laugh",
+    register: "the Street Market: small talk, quick and dry, people close by, easy to laugh at the way things are",
   },
   HEAD: {
     name: "HEAD",
     colour: "#37e6f0",
     district: "The Stack",
-    register: "the Stack: the big questions, clear and unhurried, exact words, no filler",
+    register: "the Stack: the big questions, clear and unhurried, exact words, no consolation, no filler",
   },
 };
 

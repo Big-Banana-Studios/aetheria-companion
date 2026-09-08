@@ -474,7 +474,7 @@ export class Companion extends EventTarget {
     const notes = [];
     // a thin last reply asks for a fuller one this time
     if (this.lastReplyWords != null && this.lastReplyWords < 15) {
-      notes.push("(A fuller reply this time: three to five sentences, about the specific thing they said, with something of your own in it.)");
+      notes.push("(A fuller reply this time: three to five sentences, about the specific thing they said, with a turn of your own in it: an observation, a bit of your past, an opinion.)");
     }
     const last = this.asked[this.asked.length - 1];
     if (last === true) notes.push("(No question this time. Answer, react, or offer a thought of your own.)");
@@ -500,7 +500,7 @@ export class Companion extends EventTarget {
       return;
     }
     this._turn({
-      text: "(It has been quiet a while. Say one or two sentences of your own: something you noticed just now, a thought, or a gentle check-in on them. No question.)",
+      text: "(It has been quiet a while. Say one or two sentences of your own: a dry observation about the night, the street, or them; or a thought you have been sitting on. Not a comfort. No question.)",
       silent: true,
     });
   }
