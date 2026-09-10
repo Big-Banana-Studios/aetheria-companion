@@ -48,7 +48,14 @@ Gestures (played over a state, from `courier.json` → `gestures`):
 | `lookaway` / `lookup` | `idle_northeast` / `idle_up` | thinking and idle fidgets |
 | `flinch` / `startle` | `hurt_down` (recoil frames) | interrupted, error, woken from a nap |
 | `enter` | `run_right` from off-screen left at the measured run speed | app start |
+| `stroll` (generated) | `walk_right`/`walk_left` edge to edge at an easy gait (the walk clip at 10 fps, the travel time scaled to match), a `smoke_right`/`smoke_left` stop partway about half the time, a look back or up at each edge, then back to the middle | quiet for 35–70 s in idle, 25–50 s into a smoke break; the numbers are `gestures.stroll` in the manifest, the steps are made fresh each time by `renderer._strollSteps` |
 | travel (built in) | `walk_right`/`walk_left` off the edge, the street switches, walk back in to the middle | the conversation's depth changed district |
+
+Where she stands: the bottom 24 % of the screen is road (`groundY` is the
+kerb, where the buildings end) and her feet are 55 % of the way down it
+(`standY`), so she is on the street rather than on the building line, with
+road below her for the reflection. The near signs hang at her fist height
+measured from `standY`, so the sign punch still connects.
 
 Walking speed comes from `cycle_px` measured on the side-view clips (the
 game importer's method): one stride's foot spread, doubled, scaled.

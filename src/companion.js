@@ -8,9 +8,10 @@ import { Music } from "./audio/music.js";
 import { SentenceSplitter } from "./splitter.js";
 import { Memory } from "./memory.js";
 import { Timings } from "./debug.js";
-import { buildSystemPrompt, DEFAULT_PERSONA, MOODS, DEPTHS } from "./persona.js";
-import { streamChat } from "./lab.js";
-import { vadThresholds, REGIMES, replyLength } from "./settings.js";
+import { buildSystemPrompt, personaText, MOODS, DEPTHS } from "./persona.js";
+import { streamChat, explainFetchError, blockedByMixedContent } from "./lab.js";
+import { ThinkParser } from "./think.js";
+import { vadThresholds, REGIMES, replyLength, isRemote, connection, endpoints } from "./settings.js";
 import { pickThought } from "./thoughts.js";
 
 const MOOD_TAG = /^\s*(?:\[([a-z]+)\]\s*)+/i;
@@ -62,9 +63,22 @@ export class Companion extends EventTarget {
     return this.settings.brain;
   }
 
+  /** The lab or a server on this device: text in over HTTP, Moonshine and Kokoro here. */
+  get remote() {
+    return isRemote(this.brain);
+  }
+
   systemPrompt() {
-    const persona = this.settings.persona || DEFAULT_PERSONA;
-    return buildSystemPrompt(persona, { audio: this.brain === "gemma", camera: this.brain === "gemma" });
+    const persona = personaText(this.settings);
+    const remote = this.remote;
+    return buildSystemPrompt(persona, {
+      audio: this.brain === "gemma",
+      camera: this.brain === "gemma" || remote, // a still goes to the lab model as an image_url
+      remote,
+      brain: this.brain,
+      model: remote ? connection(this.settings).model : "",
+      length: replyLength(this.settings),
+    });
   }
 
   /**
@@ -74,7 +88,9 @@ export class Companion extends EventTarget {
   async boot({ dtype = "q4f16", device = "webgpu" }) {
     this.dtype = dtype;
     this.device = device;
-    this.timings.info = { brain: this.brain, dtype, device };
+    this.timings.info = this.remote
+      ? { brain: this.brain, dtype: connection(this.settings).model || "?", device: endpoints(connection(this.settings).url)?.host || "" }
+      : { brain: this.brain, dtype, device };
 
     this.vad = new Worker(new URL("./workers/vad.worker.js", import.meta.url), { type: "module" });
     this.tts = new Worker(new URL("./workers/tts.worker.js", import.meta.url), { type: "module" });
@@ -113,7 +129,7 @@ export class Companion extends EventTarget {
     });
     this.llm.postMessage({
       type: "load",
-      brain: this.brain,
+      brain: this.remote ? "lab" : this.brain, // the worker only transcribes for a remote brain
       dtype,
       device,
       deviceMap: this.settings.deviceMap || null,
@@ -245,6 +261,22 @@ export class Companion extends EventTarget {
     this.vad?.postMessage({ type: "ptt_up" });
   }
 
+  /**
+   * A typed line: the same turn as speech, minus the transcription. A camera
+   * still attached with ◉ rides along. If she is mid-reply she is cut off,
+   * as speaking over her would.
+   */
+  sendText(text) {
+    const t = String(text || "").trim();
+    if (!t) return false;
+    if (this.state === "speaking" || this.state === "thinking") this.interrupt();
+    this.initiations = 0; // the user spoke, in writing
+    this._turn({ text: t, image: this.pendingImage });
+    this.pendingImage = null;
+    this.dispatchEvent(new CustomEvent("snapUsed"));
+    return true;
+  }
+
   /** Test hook: the model worker's next generation fails as a lost GPU device. */
   simulateGpuLoss() {
     this.llm?.postMessage({ type: "simulate_gpu_loss" });
@@ -306,7 +338,8 @@ export class Companion extends EventTarget {
     cx.scale(-1, 1); // un-mirror the selfie view
     cx.drawImage(v, 0, 0, w, h);
     const d = cx.getImageData(0, 0, w, h);
-    return { data: d.data, width: w, height: h };
+    // raw pixels for the on-device model; a JPEG data URL for a lab model
+    return { data: d.data, width: w, height: h, dataUrl: this.remote ? c.toDataURL("image/jpeg", 0.8) : null };
   }
 
   // ------------------------------------------------------------ the turn
@@ -341,6 +374,7 @@ export class Companion extends EventTarget {
       held: [], // audio waiting for her to arrive in a new district
       travel: null,
       depth: null,
+      tagsDone: false, // the leading tags have been read in full
       cancelled: false,
       finished: false,
       hadImage: !!image,
@@ -376,8 +410,8 @@ export class Companion extends EventTarget {
       this.hints.push(`(A moment ago you said, unprompted: "${say}")`);
       return;
     }
-    if (this.brain === "lab") {
-      this._labTurn(cur, audio, text);
+    if (this.remote) {
+      this._labTurn(cur, audio, text, image);
       return;
     }
     if (audio && this.stt) {
@@ -407,7 +441,15 @@ export class Companion extends EventTarget {
     this.timings.mark("sent");
   }
 
-  async _labTurn(cur, audio, text) {
+  /**
+   * A turn on the lab or on a server on this device: Moonshine writes the
+   * words down here, the reply streams back over HTTP. The model is told not
+   * to think (she speaks, she does not deliberate) and whatever thinking a
+   * server sends anyway is split off before it can reach her voice.
+   */
+  async _labTurn(cur, audio, text, image = null) {
+    const conn = connection(this.settings);
+    const where = this.brain === "local" ? "Local server" : "Lab";
     try {
       let userText = text || "";
       if (audio) {
@@ -419,42 +461,68 @@ export class Companion extends EventTarget {
         userText = [t, text].filter(Boolean).join("\n");
       }
       if (cur.cancelled) return;
-      if (!userText.trim()) {
+      if (!userText.trim() || /^\[BLANK_AUDIO\]$/i.test(userText.trim())) {
         this._finish(cur, { blank: true });
         return;
       }
+      const e = endpoints(conn.url);
+      if (!e) throw new Error(this.brain === "local" ? "no server address set (Settings → A server on this device)" : "no endpoint set (Settings → Lab)");
+      if (blockedByMixedContent(conn.url)) throw new TypeError("Failed to fetch");
       this.timings.mark("sent");
-      const messages = [{ role: "system", content: this.systemPrompt() }, ...this.memory.asMessages(12)];
-      const hints = this.hints.splice(0);
+      // The model sees the transcript, not the audio, so a little more of each
+      // remembered turn is affordable here. The user's words are already in
+      // memory (the transcript was written there before this point); a silent
+      // turn (her own check-in) is not, so its instruction goes on the wire
+      // with the hints, which are never shown or remembered either.
+      const messages = [{ role: "system", content: this.systemPrompt() }, ...this.memory.asMessages(12, 400)];
+      const extra = cur.silent && userText.trim() ? [userText.trim()] : [];
+      extra.push(...this.hints.splice(0));
       const pace = this._questionPacing();
-      if (pace) hints.push(pace);
-      if (hints.length) {
+      if (pace) extra.push(pace);
+      if (extra.length) {
         const last = messages[messages.length - 1];
-        if (last.role === "user") last.content += `\n${hints.join("\n")}`;
-        else messages.push({ role: "user", content: hints.join("\n") });
+        if (last.role === "user") last.content += `\n${extra.join("\n")}`;
+        else messages.push({ role: "user", content: extra.join("\n") });
+      }
+      if (image?.dataUrl) {
+        // the still rides on the last user turn, OpenAI-style
+        const last = messages[messages.length - 1];
+        const t = last.role === "user" ? last.content : "(a camera still)";
+        if (last.role !== "user") messages.push({ role: "user", content: t });
+        messages[messages.length - 1].content = [{ type: "text", text: t }, { type: "image_url", image_url: { url: image.dataUrl } }];
       }
       cur.controller = new AbortController();
-      const lab = this.settings.lab;
-      const full = await streamChat({
-        url: lab.url,
-        model: lab.model || "default",
-        apiKey: lab.apiKey,
+      let visible = "";
+      const parser = new ThinkParser((piece) => {
+        visible += piece;
+        this._onToken(cur.id, piece);
+      });
+      const r = await streamChat({
+        chat: e.chat,
+        model: conn.model || "default",
+        apiKey: conn.apiKey,
         messages,
         signal: cur.controller.signal,
-        sampling: !!this.settings.sampling,
-        maxTokens: replyLength(this.settings) === "short" ? 120 : 400,
-        onDelta: (piece) => this._onToken(cur.id, piece),
+        temperature: this.settings.sampling ? 0.75 : 0.3,
+        maxTokens: replyLength(this.settings) === "short" ? 120 : 500,
+        thinking: false,
+        thinkSwitch: this.settings.thinkSwitch || "auto",
+        onDelta: (piece) => parser.push(piece),
       });
-      this._onDone({ id: cur.id, text: full, tokens: 0, interrupted: false });
+      parser.close();
+      if (cur.cancelled) return;
+      this.lastLab = { ms: r.ms, firstTokenMs: r.firstTokenMs, usage: r.usage, finish: r.finish, reasoning: r.reasoning.length };
+      this._onDone({ id: cur.id, text: visible, tokens: r.usage?.completion_tokens ?? r.chunks, interrupted: r.finish === "length" });
     } catch (e) {
       if (cur.cancelled) return;
-      this._error(`Lab mode: ${e.message}`);
+      this._error(`${where}: ${explainFetchError(e, conn.url)}`);
       this._finish(cur, { error: true });
     }
   }
 
   /** Model text so far -> what will be spoken (tags stripped, transcript held back). */
   _process(raw) {
+    // gpt-oss's thought channel; a lab model's <think> block is split off upstream (think.js)
     let s = raw.replace(/<\|channel>thought[\s\S]*?<channel\|>/g, "");
     // leading mood tag(s)
     const head = s.match(MOOD_TAG);
@@ -481,13 +549,25 @@ export class Companion extends EventTarget {
     if (!cur.raw) this.timings.mark("first_token", id);
     cur.raw += piece;
     const head = cur.raw.match(MOOD_TAG);
-    if (head && !cur.mood) {
+    if (head && !cur.tagsDone) {
+      // The two tags can land in separate pieces ("[curious] " then "[mid] ").
+      // Keep reading the head until something that is not a tag follows it,
+      // so the depth tag is not lost behind the first complete mood tag.
       const tags = [...head[0].matchAll(/\[([a-z]+)\]/gi)].map((m) => m[1].toLowerCase());
-      cur.mood = tags.find((t) => MOODS.includes(t)) || "calm";
-      this.renderer.setMood(cur.mood);
-      this.music?.setMood(cur.mood);
-      cur.depth = tags.find((t) => t in DEPTHS) || null;
-      if (cur.depth) this._topic(cur, DEPTHS[cur.depth]);
+      const mood = tags.find((t) => MOODS.includes(t));
+      const depth = tags.find((t) => t in DEPTHS) || null;
+      const rest = cur.raw.slice(head[0].length);
+      const done = !!rest && !/^\[[^\]]*$/.test(rest);
+      if (!cur.mood && (mood || done)) {
+        cur.mood = mood || "calm";
+        this.renderer.setMood(cur.mood);
+        this.music?.setMood(cur.mood);
+      }
+      if (depth && !cur.depth) {
+        cur.depth = depth;
+        this._topic(cur, DEPTHS[depth]);
+      }
+      if (done) cur.tagsDone = true;
     }
     if (LOOK_TAG.test(cur.raw)) cur.look = true;
     LOOK_TAG.lastIndex = 0;
@@ -535,7 +615,7 @@ export class Companion extends EventTarget {
   _initiate() {
     this.initiations++;
     this.nextInitiate = 120 + Math.random() * 120;
-    if (this.brain === "gemma" && Math.random() < 0.5) {
+    if (Math.random() < 0.5) {
       this._turn({ say: pickThought(), mood: "thoughtful", silent: true });
       return;
     }
@@ -718,8 +798,9 @@ export class Companion extends EventTarget {
       if (this.live && this.state === "idle" && !this.paused && this.settings.initiate !== false && this.initiations < 3) {
         if ((performance.now() - this.quietSince) / 1000 >= this.nextInitiate) this._initiate();
       }
-      // a smoke break after a long quiet spell, and a nap if it goes on
-      if (this.state === "idle" && this.settings.smokeBreaks) {
+      // a smoke break after a long quiet spell, and a nap if it goes on; a
+      // stroll in progress (the renderer's own quiet-time habit) finishes first
+      if (this.state === "idle" && this.settings.smokeBreaks && !this.renderer.strolling) {
         const quiet = (performance.now() - this.idleSince) / 1000;
         const smoke = this.renderer.m.states.idle_long;
         const nap = this.renderer.m.states.asleep;

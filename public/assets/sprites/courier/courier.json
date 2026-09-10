@@ -28,7 +28,7 @@
  "moods": {
   "calm": {
    "gesture": null,
-   "glow": 1.0,
+   "glow": 1,
    "breathe": 1.6,
    "rain": 0.75
   },
@@ -47,13 +47,13 @@
   "concerned": {
    "gesture": "reach",
    "glow": 0.7,
-   "breathe": 1.0,
+   "breathe": 1,
    "rain": 1.1
   },
   "amused": {
    "gesture": "bounce",
    "glow": 1.2,
-   "breathe": 2.0,
+   "breathe": 2,
    "rain": 0.55
   },
   "excited": {
@@ -66,7 +66,7 @@
    "gesture": "punch",
    "glow": 0.9,
    "breathe": 2.2,
-   "rain": 1.0
+   "rain": 1
   },
   "sassy": {
    "gesture": "punch_sign",
@@ -230,7 +230,24 @@
     "clip": "resonate_down",
     "hold": -1
    }
-  ]
+  ],
+  "stroll": {
+   "generated": "renderer._strollSteps: edge to edge at an easy gait, a smoke partway now and then, back to the middle",
+   "fps": 10,
+   "crossings": [
+    2,
+    3
+   ],
+   "stop_chance": 0.5,
+   "puff_seconds": [
+    5,
+    8
+   ],
+   "edge_pause": [
+    0.8,
+    1.8
+   ]
+  }
  },
  "states": {
   "idle": {
@@ -245,6 +262,10 @@
    "fidget_every": [
     12,
     25
+   ],
+   "stroll_every": [
+    35,
+    70
    ]
   },
   "idle_long": {
@@ -263,7 +284,11 @@
     20
    ],
    "optional": true,
-   "note": "the smoke break; she looks around while she sits it out"
+   "note": "the smoke break; she looks around while she sits it out, and now and then gets up to pace the street",
+   "stroll_every": [
+    25,
+    50
+   ]
   },
   "listening": {
    "clip": "walk_down",
@@ -510,11 +535,11 @@
     32,
     48
    ],
-   "stride": 64.0,
+   "stride": 64,
    "note": "no clear cycle - sampled across the whole clip"
   },
   "idle_southeast": {
-   "fps": 12.0,
+   "fps": 12,
    "loop": true,
    "facing": "southeast",
    "frames": [
@@ -1351,7 +1376,7 @@
     24,
     37
    ],
-   "stride": 49.0,
+   "stride": 49,
    "note": "no clear cycle - sampled across the whole clip"
   },
   "idle_northeast": {
@@ -1384,7 +1409,7 @@
     24,
     37
    ],
-   "stride": 49.0,
+   "stride": 49,
    "note": "no clear cycle - sampled across the whole clip"
   },
   "sleep_down": {
@@ -1975,13 +2000,13 @@
     32,
     48
    ],
-   "stride": 64.0,
+   "stride": 64,
    "note": "no clear cycle - sampled across the whole clip",
    "mirror_of": "idle_right",
    "flip": true
   },
   "idle_southwest": {
-   "fps": 12.0,
+   "fps": 12,
    "loop": true,
    "facing": "southwest",
    "frames": [
@@ -2065,7 +2090,7 @@
     24,
     37
    ],
-   "stride": 49.0,
+   "stride": 49,
    "note": "no clear cycle - sampled across the whole clip",
    "mirror_of": "idle_northeast",
    "flip": true

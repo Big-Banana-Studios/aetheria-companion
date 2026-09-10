@@ -55,6 +55,12 @@ legend { color: var(--ink-2); font-size: 13px; padding: 0 6px; }
 .opt input { width: auto; margin: 4px 0 0; flex: none; }
 .opt em { color: var(--ink-3); font-style: normal; }
 .lab-fields label { margin-top: 6px; }
+.test-result { font-size: 12px; color: var(--ink-3); align-self: center; word-break: break-word; }
+.test-result.ok { color: var(--accent-2); }
+.test-result.bad { color: #f0b27a; }
+.btn-row button.ghost { padding: 8px 12px; }
+#conn-hint { margin: 8px 0 0; }
+#persona-note { margin: 4px 0 0; }
 button.primary { width: 100%; padding: 14px; margin-top: 14px; border: 0; border-radius: 12px; background: var(--accent); color: #0c0d1d; font-weight: 700; font-size: 16px; }
 button.primary:disabled { opacity: 0.5; cursor: default; }
 button.ghost { background: transparent; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; color: var(--ink-2); }
@@ -91,8 +97,12 @@ button.ghost.danger { border-color: var(--danger); color: var(--danger); }
 .line.her .unsaid { color: var(--ink-3); }
 .line.sys { align-self: center; color: var(--ink-3); font-size: 12px; background: transparent; }
 
-#controls { flex: none; display: flex; align-items: center; justify-content: center; gap: 22px; padding: 12px 16px calc(14px + var(--safe-bottom)); background: var(--bg-2); border-top: 1px solid var(--line); }
-button.round { width: 48px; height: 48px; border-radius: 50%; border: 1px solid var(--line); background: var(--bg-3); color: var(--ink-2); font-size: 20px; }
+#controls { flex: none; display: flex; align-items: center; justify-content: center; gap: 16px; padding: 12px 16px calc(14px + var(--safe-bottom)); background: var(--bg-2); border-top: 1px solid var(--line); }
+#text-row { display: flex; align-items: center; gap: 8px; flex: 1 1 auto; max-width: 420px; margin: 0; min-height: 88px; }
+#text-row input { flex: 1 1 auto; min-width: 0; border-radius: 999px; padding: 12px 16px; font-size: 15px; background: var(--bg-3); }
+#text-row input:focus { outline: none; border-color: var(--accent); }
+#text-row .send { width: 48px; height: 48px; border-radius: 50%; border: 2px solid var(--accent); background: var(--accent); color: #0c0d1d; font-size: 20px; font-weight: 700; flex: none; }
+button.round { flex: none; width: 48px; height: 48px; border-radius: 50%; border: 1px solid var(--line); background: var(--bg-3); color: var(--ink-2); font-size: 20px; }
 button.round.on { border-color: var(--accent-2); color: var(--accent-2); }
 button.talk { width: 88px; height: 88px; border-radius: 50%; border: 3px solid var(--accent); background: radial-gradient(circle at 50% 40%, var(--bg-3), var(--bg)); color: var(--ink); font-size: 12px; text-transform: lowercase; letter-spacing: 0.06em; user-select: none; -webkit-user-select: none; touch-action: none; transition: box-shadow 0.15s, transform 0.1s; }
 button.talk.live { box-shadow: 0 0 22px var(--accent); }

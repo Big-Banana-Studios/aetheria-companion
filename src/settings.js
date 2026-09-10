@@ -1,6 +1,12 @@
-// Settings, persisted to localStorage as one JSON blob.
+// Settings, persisted to localStorage as one JSON blob. The endpoints, the
+// models and the keys never leave this browser. The lab block is shared
+// with the Aetheria Workbench when both apps are served from the same
+// origin (GitHub Pages project sites share big-banana-studios.github.io):
+// the workbench writes its endpoint into `companion.settings.lab`, and
+// `adoptFromWorkbench` reads its settings the other way.
 
 const KEY = "companion.settings";
+const WORKBENCH_KEY = "workbench.settings";
 
 export const REGIMES = {
   GUT: {
@@ -34,8 +40,17 @@ const BANDS = [
 export const IS_MOBILE =
   typeof navigator !== "undefined" && (navigator.userAgentData?.mobile === true || /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent));
 
+// The four brains. `gemma` and `text` run in this browser on WebGPU; `lab`
+// and `local` are OpenAI-compatible servers reached over HTTP: the lab is
+// the box at home (the Olares, LiteLLM), local is a server on this same
+// device (the Workbench app's in-app llama.cpp runtime on the phone,
+// llama-server / LM Studio / Ollama on a PC). Moonshine transcribes here
+// for both; Kokoro still speaks here.
+export const REMOTE_BRAINS = ["lab", "local"];
+export const isRemote = (brain) => REMOTE_BRAINS.includes(brain);
+
 export const DEFAULTS = {
-  replyLength: "auto", // auto (short on phones, full on PCs) | short | full
+  replyLength: "auto", // auto (short on phones with an on-device brain, full otherwise) | short | full
   ttsDevice: "auto", // auto (GPU) | gpu | cpu: where the voice runs
   music: true, // the synth bed
   musicVolume: 40, // 0..100
@@ -47,10 +62,11 @@ export const DEFAULTS = {
   stormThunder: true,
   stormVolume: 50, // 0..100: the storm's sound
   musicTempo: 76, // BPM of the bed
-  brain: "gemma", // gemma | text | lab
+  brain: "gemma", // gemma | text | lab | local
   voice: "af_nicole", // the one that hits for her
   speed: 1.0,
   mode: "vad", // vad | ptt
+  input: "voice", // voice (the talk button) | text (a box in the footer; the mic pauses while you type)
   sensitivity: 50, // 0..100
   bargeIn: true,
   smokeBreaks: true,
@@ -59,8 +75,15 @@ export const DEFAULTS = {
   sampling: true, // varied replies; greedy decoding made her generic
   regime: "topic", // topic (the conversation's depth) | reader | GUT | HEART | HEAD
   sttModel: "tiny", // tiny | base: Moonshine for the transcript strip
-  persona: null, // null = default persona.md
+  persona: null, // null = the preset's text (personas/*.md); a string = edited by hand
+  personaPreset: "auto", // auto (short on a phone's on-device brain, long on a network brain, standard otherwise) | short | standard | long
+  // url: the OpenAI-compatible base, e.g. https://<id>.laresprime.olares.com/v1
+  // (a bare host or the full /v1/chat/completions URL, as older builds and the
+  // workbench write it, are accepted too; see endpoints()).
   lab: { url: "", model: "", apiKey: "" },
+  // a server on this device: the Workbench app's runtime listens on 8080
+  local: { url: "http://127.0.0.1:8080/v1", model: "", apiKey: "" },
+  thinkSwitch: "auto", // auto | template (chat_template_kwargs only) | tag (/no_think only) | none: how the lab is told not to think
   debug: false,
   ttsEngine: "kokoro", // kokoro | kitten
 };
@@ -73,7 +96,12 @@ export function loadSettings() {
     if (s.regime === "auto") s.regime = "topic"; // older builds
     delete s.deviceMap; // an experiment flag that once leaked into storage
     if (s.sampling === false && !s.samplingChosen) s.sampling = true; // the old default, never a choice
-    return { ...structuredClone(DEFAULTS), ...s, lab: { ...DEFAULTS.lab, ...(s.lab || {}) } };
+    return {
+      ...structuredClone(DEFAULTS),
+      ...s,
+      lab: { ...DEFAULTS.lab, ...(s.lab || {}) },
+      local: { ...DEFAULTS.local, ...(s.local || {}) },
+    };
   } catch {
     return structuredClone(DEFAULTS);
   }
@@ -87,10 +115,91 @@ export function saveSettings(s) {
   }
 }
 
-/** "short" or "full": how much she says per turn. */
+/**
+ * "short" or "full": how much she says per turn. The short default exists
+ * to spare a phone's GPU a long generate-and-synthesize burst; on a remote
+ * brain the phone only speaks, so she gets the full reply there.
+ */
 export function replyLength(settings) {
   if (settings.replyLength === "short" || settings.replyLength === "full") return settings.replyLength;
+  if (isRemote(settings.brain)) return "full";
   return IS_MOBILE ? "short" : "full";
+}
+
+/** The {url, model, apiKey} block a remote brain uses. */
+export function connection(settings, brain = settings.brain) {
+  return brain === "local" ? settings.local : settings.lab;
+}
+
+/**
+ * The endpoint as the user typed it, normalised to the URLs the app needs.
+ * Accepts a bare host, a base ending in /v1, or the full /v1/chat/completions
+ * form. From the workbench's settings.js.
+ */
+export function endpoints(url) {
+  let u = (url || "").trim();
+  if (!u) return null;
+  if (!/^https?:\/\//i.test(u)) u = "http://" + u;
+  u = u.replace(/\/+$/, "");
+  u = u.replace(/\/chat\/completions$/i, "").replace(/\/models$/i, "");
+  if (!/\/v\d+$/i.test(u)) u += "/v1";
+  let host = "";
+  try {
+    host = new URL(u).hostname;
+  } catch {
+    return null;
+  }
+  return { base: u, chat: `${u}/chat/completions`, models: `${u}/models`, http: /^http:\/\//i.test(u), host, loopback: isLoopbackHost(host), lan: isLanHost(host) };
+}
+
+export function isLoopbackHost(host) {
+  return /^(localhost|127(\.\d{1,3}){3}|\[::1\]|::1|0\.0\.0\.0)$/i.test(host || "");
+}
+
+/** A private (RFC 1918 / link-local / .local / .home) address: the LAN. */
+export function isLanHost(host) {
+  const h = String(host || "").toLowerCase();
+  if (isLoopbackHost(h)) return false;
+  if (/^10(\.\d{1,3}){3}$/.test(h) || /^192\.168(\.\d{1,3}){2}$/.test(h) || /^172\.(1[6-9]|2\d|3[01])(\.\d{1,3}){2}$/.test(h) || /^169\.254(\.\d{1,3}){2}$/.test(h)) return true;
+  return /\.(local|lan|home|internal)$/.test(h) || !h.includes(".");
+}
+
+/**
+ * Mixed content: an https page cannot call a plain http box on the LAN.
+ * Loopback is exempt (the browser treats it as secure), and Chrome lets a
+ * private address through when the fetch names it (see lab.js).
+ */
+export function mixedContent(url) {
+  const e = endpoints(url);
+  if (!e) return false;
+  return typeof location !== "undefined" && location.protocol === "https:" && e.http && !e.loopback;
+}
+
+/**
+ * The workbench's settings, when it is served from this origin: its lab
+ * endpoint if this app has none, and its Mira desk prompt if the user
+ * edited it there and left the persona here at the default. Returns what
+ * was taken, so the caller can say so.
+ */
+export function adoptFromWorkbench(s) {
+  const took = [];
+  try {
+    const w = JSON.parse(localStorage.getItem(WORKBENCH_KEY) || "null");
+    if (!w) return took;
+    if (!s.lab?.url && w.lab?.url) {
+      s.lab = { url: w.lab.url, model: w.lab.model || "", apiKey: w.lab.apiKey || "" };
+      took.push("lab");
+    }
+    const prompt = w.desks?.mira?.prompt;
+    if (!s.persona && prompt && prompt.trim()) {
+      s.persona = prompt;
+      s.personaFrom = "workbench";
+      took.push("persona");
+    }
+  } catch {
+    /* the workbench is not here */
+  }
+  return took;
 }
 
 /** Silero thresholds from the 0..100 sensitivity slider. */

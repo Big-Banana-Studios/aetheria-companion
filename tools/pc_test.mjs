@@ -2,7 +2,17 @@
 //
 //   node tools/pc_test.mjs            # full test (downloads ~3.7 GB into .chrome-test-profile the first time)
 //   node tools/pc_test.mjs --brain=text
+//   node tools/pc_test.mjs --brain=lab --fakelab     # the lab brain against tools/fake_lab.mjs (npm run test:lab)
+//   node tools/pc_test.mjs --brain=local --fakelab   # the same over the "server on this device" brain
 //   node tools/pc_test.mjs --keep     # leave Chrome and the dev server running afterwards
+//
+// With --fakelab the fake endpoint is started here, the chosen brain's
+// settings are pointed at it before the page boots, the gate's own probe
+// must report OK (that is what picks the model), and after her first reply
+// the request the fake lab received is checked: the thinking switch,
+// Qwen's /no_think, the key, the model, max_tokens, the persona and its
+// framing; and her line on screen must carry no reasoning and no tags.
+// A dev server already up on the port is reused (npm run pc leaves one).
 //
 // What it does:
 //   1. builds a 16 kHz test utterance (a public-domain speech clip) padded with
@@ -20,17 +30,30 @@ import { existsSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { launchChrome, killTree, sleep, waitHttp } from "./cdp.mjs";
+import { start as startFakeLab } from "./fake_lab.mjs";
 
 const root = join(fileURLToPath(import.meta.url), "..", "..");
 const args = new Map(process.argv.slice(2).map((a) => a.replace(/^--/, "").split("=")).map(([k, v]) => [k, v ?? true]));
 const brain = args.get("brain") || "gemma";
+const remote = brain === "lab" || brain === "local";
 const keep = args.has("keep");
 const devices = args.get("devices"); // e.g. embed_tokens:wasm
 const preview = args.has("preview"); // serve the production build (dist/) instead of the dev server
 const sampling = args.get("sampling"); // "0" or "1": override the sampling setting for this run
-const gpucrash = args.has("gpucrash"); // kill Chrome's GPU process mid-session and check she recovers
-const PORT = 5173;
+const gpucrash = args.has("gpucrash") && !remote; // kill Chrome's GPU process mid-session and check she recovers
+const fakelab = args.has("fakelab"); // point the lab/local brain at tools/fake_lab.mjs, started here
+const PORT = Number(args.get("port")) || 5173;
+const LAB = Number(args.get("labport")) || 4321;
 const DEBUG = 9334;
+const FAKE_MODEL = "unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_XL"; // the first, and best-scoring, of the fake lab's list
+let failures = 0;
+const check = (name, pass, detail = "") => {
+  if (pass) log("  ok  ", name);
+  else {
+    failures++;
+    log("  FAIL", name, detail);
+  }
+};
 const profile = join(root, ".chrome-test-profile");
 const testDir = join(root, ".test");
 mkdirSync(profile, { recursive: true });
@@ -122,15 +145,30 @@ const win = process.platform === "win32";
 let server = null;
 let chrome = null;
 let cdp = null;
+let lab = null;
 let ok = false;
 
 try {
   const { speech, micPath } = await prepareAudio();
   log(`test utterance ${(speech.length / 16000).toFixed(1)} s; fake mic file ${micPath}`);
 
-  server = spawn(win ? "npx.cmd" : "npx", ["vite", ...(preview ? ["preview"] : []), "--port", String(PORT), "--strictPort"], { cwd: root, stdio: "ignore", shell: win });
-  await waitHttp(`http://localhost:${PORT}/`, 300);
-  log(`${preview ? "preview (dist/)" : "dev"} server up on http://localhost:${PORT}/`);
+  if (fakelab) {
+    lab = await startFakeLab(LAB, "127.0.0.1");
+    log(`fake lab on http://127.0.0.1:${LAB}/v1`);
+  }
+  let up = false;
+  try {
+    await waitHttp(`http://localhost:${PORT}/`, 2, 100);
+    up = true;
+    log(`reusing the server already on http://localhost:${PORT}/`);
+  } catch {
+    /* start one */
+  }
+  if (!up) {
+    server = spawn(win ? "npx.cmd" : "npx", ["vite", ...(preview ? ["preview"] : []), "--port", String(PORT), "--strictPort"], { cwd: root, stdio: "ignore", shell: win });
+    await waitHttp(`http://localhost:${PORT}/`, 300);
+    log(`${preview ? "preview (dist/)" : "dev"} server up on http://localhost:${PORT}/`);
+  }
 
   ({ proc: chrome, cdp } = await launchChrome({
     headless: false,
@@ -148,6 +186,21 @@ try {
   }));
   log("chrome up; page loaded");
   await sleep(1500);
+  if (fakelab) {
+    // the chosen network brain points at the fake lab, with no model set, so
+    // the gate's probe has to pick one; then boot again with those settings
+    await cdp.eval(`(() => {
+      const s = JSON.parse(localStorage.getItem("companion.settings") || "{}");
+      s.brain = ${JSON.stringify(brain)};
+      s[${JSON.stringify(brain)}] = { url: "http://127.0.0.1:${LAB}/v1", model: "", apiKey: "k" };
+      s.regime = "topic"; // the district follows the conversation's depth tag (a pinned one from an earlier run would not move)
+      localStorage.setItem("companion.settings", JSON.stringify(s));
+      return "ok";
+    })()`);
+    await cdp.navigate(`http://localhost:${PORT}/?debug`);
+    await sleep(1500);
+    log("settings point at the fake lab; page reloaded");
+  }
 
   const gateMsg = async () => cdp.eval(`document.getElementById('gate-msg')?.textContent || ''`);
   log("gate:", await gateMsg());
@@ -155,9 +208,25 @@ try {
   const f16 = await cdp.eval(`!!(window.__gpu && window.__gpu.f16)`);
   const info = await cdp.eval(`(async () => { const a = await navigator.gpu?.requestAdapter(); const i = a?.info || {}; return [i.vendor, i.architecture, i.device, i.description].filter(Boolean).join(' / '); })()`).catch(() => "");
   log(`webgpu ok=${gpuOk} shader-f16=${f16} adapter=${info || "?"}`);
-  if (!gpuOk && brain !== "lab") throw new Error("no WebGPU adapter in Chrome: " + (await gateMsg()));
+  if (!gpuOk && !remote) throw new Error("no WebGPU adapter in Chrome: " + (await gateMsg()));
 
   await cdp.eval(`document.querySelector('input[name=brain][value="${brain}"]').click()`);
+  if (remote) {
+    // the gate shows the endpoint fields for a network brain and probes it
+    check("endpoint fields shown for a network brain", !(await cdp.eval(`document.getElementById('conn-fields').hidden`)));
+    let result = "";
+    for (let i = 0; i < 40; i++) {
+      result = await cdp.eval(`document.getElementById('conn-result').textContent`);
+      if (/^(OK|Failed)/.test(result)) break;
+      await sleep(250);
+    }
+    log("gate probe:", result);
+    if (fakelab) {
+      check("the gate's probe reached the fake lab and listed its models", /^OK · \d+ ms · 3 models/.test(result), result);
+      check("a model was picked from the list", result.includes(FAKE_MODEL), result);
+      check("the pick was saved", (await cdp.eval(`JSON.parse(localStorage.getItem("companion.settings"))[${JSON.stringify(brain)}].model`)) === FAKE_MODEL);
+    }
+  }
   const tClick = Date.now();
   await cdp.eval(`document.getElementById('btn-start').click()`);
   log(`clicked start (brain=${brain}${devices ? `, devices=${devices}` : ""}); downloading / loading…`);
@@ -185,11 +254,19 @@ try {
   await cdp.screenshot(join(root, "shots", "pc-test-1-ready.png"));
 
   // The fake mic has been looping its 57 s file since the click (1 s quiet,
-  // 11 s speech, 45 s quiet). Inject only when at least 30 s of quiet remain,
-  // so she is not talked over by the loop while she answers.
-  const LOOP = 57;
-  const phase = () => ((Date.now() - tClick) / 1000) % LOOP;
-  while (!(phase() > 13 && phase() < 25)) await sleep(500);
+  // 11 s speech, 45 s quiet). For the deterministic turns her listening is
+  // paused, so the loop cannot start a turn of its own on top of the
+  // injected one (it did: the injected reply then queued behind the loop's),
+  // and each injection waits until she is idle. Listening is resumed for
+  // the natural-turn part below.
+  const idle = async () => (await cdp.eval(`document.getElementById('state-chip')?.textContent || ''`)) === "idle";
+  const untilIdle = async () => {
+    for (let i = 0; i < 240 && !(await idle()); i++) await sleep(500);
+  };
+  const pause = (on) => cdp.eval(`window.__companion.setPaused(${on}); "ok"`);
+  await pause(true);
+  await untilIdle();
+  const callsBefore = fakelab ? (await (await fetch(`http://127.0.0.1:${LAB}/last`)).json()).calls : 0;
 
   // deterministic turn: inject the utterance straight into the pipeline
   const b64 = Buffer.from(new Int16Array(Array.from(speech, (v) => Math.max(-32768, Math.min(32767, Math.round(v * 32767))))).buffer).toString("base64");
@@ -208,17 +285,49 @@ try {
   log("transcript of user (Moonshine):", JSON.stringify(reply.user));
   log("timings:", reply.debug.replace(/\n/g, " · "));
   await cdp.screenshot(join(root, "shots", "pc-test-2-reply.png"));
+  if (fakelab) {
+    // what the fake lab was sent, and what reached the screen
+    const last = await (await fetch(`http://127.0.0.1:${LAB}/last`)).json();
+    const req = last.last || {};
+    const lastUser = [...(req.messages || [])].reverse().find((m) => m.role === "user") || {};
+    const lastText = typeof lastUser.content === "string" ? lastUser.content : (lastUser.content || []).find((p) => p.type === "text")?.text || "";
+    const system = req.messages?.[0]?.role === "system" ? req.messages[0].content : "";
+    check("the injected turn made exactly one request", last.calls === callsBefore + 1, `${callsBefore} before, ${last.calls} after`);
+    check("thinking switched off (chat_template_kwargs)", req.chat_template_kwargs?.enable_thinking === false, JSON.stringify(req.chat_template_kwargs));
+    check("Qwen's /no_think on the last user turn", /\/no_think\s*$/.test(lastText), lastText.slice(-60));
+    check("the model picked from /v1/models was used", req.model === FAKE_MODEL, req.model);
+    check("the key was sent", last.auth === "Bearer k", String(last.auth));
+    check("full replies on a network brain (max_tokens 500)", req.max_tokens === 500, String(req.max_tokens));
+    check("the persona is the system prompt", /courier from Paperless/.test(system));
+    check("the workbench's length note and the date/model note", /## Length/.test(system) && /## Notes\nToday is/.test(system) && system.includes(FAKE_MODEL));
+    check("Moonshine's transcript reached the model", /coffee|smoke|long day/i.test(lastText), lastText.slice(0, 80));
+    check("her line carries no reasoning", !/inline reasoning|Let me think/i.test(reply.her), reply.her);
+    check("her line carries no tags", !/^\s*\[/.test(reply.her) && !/\[(curious|mid)\]/.test(reply.her), reply.her);
+    check("the plumbing she echoed: switch false, tag yes", /Thinking switch false/.test(reply.her) && /No think tag yes/.test(reply.her), reply.her);
+    const chip = await cdp.eval(`document.getElementById('regime-chip').textContent + " / regime setting " + JSON.parse(localStorage.getItem("companion.settings")).regime + " / topicRegime " + window.__companion.topicRegime`);
+    check("the depth tag moved her to the Undercity", chip.startsWith("GUT"), chip);
+  }
 
-  // a text-only turn, to see decode speed without the audio encoder
-  while (!(phase() > 13 && phase() < 30)) await sleep(500);
-  await cdp.eval(`window.__companion._turn({ text: "Tell me one thing about the rain tonight, in two sentences." })`);
-  log("text-only turn; waiting…");
+  // a text-only turn through the footer's text box (the ⌨ button swaps it
+  // in and pauses the mic), to see decode speed without the audio encoder
+  await untilIdle();
+  await cdp.eval(`document.getElementById('btn-input').click(); "ok"`);
+  check("the text box replaced the talk button", (await cdp.eval(`document.getElementById('text-row').hidden === false && document.getElementById('btn-talk').hidden === true && window.__companion.paused === true`)) === true);
+  await cdp.eval(`document.getElementById('text-in').value = "Tell me one thing about the rain tonight, in two sentences."; document.getElementById('text-row').requestSubmit(); "ok"`);
+  log("text-only turn (typed); waiting…");
   const textTurn = await waitForTurn(cdp, 120000);
   log("text turn reply:", JSON.stringify(textTurn.her));
   log("timings:", textTurn.debug.replace(/\n/g, " · "));
+  check("the typed line is in the transcript", /rain tonight/.test(textTurn.user), textTurn.user);
+  check("the box was cleared", (await cdp.eval(`document.getElementById('text-in').value`)) === "");
+  await cdp.eval(`document.getElementById('btn-input').click(); "ok"`); // back to voice
+  check("back to the talk button", (await cdp.eval(`document.getElementById('text-row').hidden === true && document.getElementById('btn-talk').hidden === false`)) === true);
+  await pause(true); // the deterministic part goes on with the mic paused
 
   // natural turn: the fake mic loops the clip about once a minute
   log("waiting for the fake mic to trigger a natural VAD turn (up to 2 min)…");
+  await untilIdle();
+  await pause(false);
   const before = await cdp.eval(`document.querySelectorAll('#lines .line.user').length`);
   const t1 = Date.now();
   let natural = null;
@@ -238,12 +347,14 @@ try {
 
   // speaking up on her own: both paths, called directly (the real trigger is
   // 45-90 s of quiet, which the looping fake mic never leaves her)
-  while (!(phase() > 13 && phase() < 30)) await sleep(500);
+  await pause(true);
+  await untilIdle();
   await cdp.eval(`window.__companion._turn({ say: "I have started recognising people by the way they hold their hands.", mood: "thoughtful", silent: true })`);
   log("her own thought, in her voice…");
   const thought = await waitForTurn(cdp, 60000);
   log("thought line:", JSON.stringify(thought.her), thought.state);
-  while (!(phase() > 13 && phase() < 30)) await sleep(500);
+  await pause(true);
+  await untilIdle();
   await cdp.eval(`window.__companion._initiate()`);
   log("a check-in, hers or the model's…");
   const checkin = await waitForTurn(cdp, 120000);
@@ -257,7 +368,8 @@ try {
     // answer anyway, with the "bringing her back" toast on the way.
     log("simulating a lost GPU device in the model worker…");
     await cdp.eval(`window.__companion.simulateGpuLoss()`);
-    while (!(phase() > 13 && phase() < 30)) await sleep(500);
+    await pause(true);
+    await untilIdle();
     const tCrash = Date.now();
     await cdp.eval(`window.__companion._turn({ text: "Still there? Say something." })`);
     log("turn after the loss; waiting (reload + reply)…");
@@ -268,8 +380,9 @@ try {
     log("recovered from the GPU loss");
   }
   for (const c of cdp.drain()) if (/error|exception|warn/i.test(c)) log("  console:", c.slice(0, 200));
-  ok = !!reply.her;
-  log(ok ? "PIPELINE OK" : "PIPELINE INCOMPLETE");
+  ok = !!reply.her && failures === 0;
+  log(ok ? "PIPELINE OK" : failures ? `PIPELINE OK BUT ${failures} CHECK(S) FAILED` : "PIPELINE INCOMPLETE");
+  if (!ok) process.exitCode = 1;
 } catch (e) {
   log("FAILED:", e.message);
   try {
@@ -283,14 +396,16 @@ try {
   process.exitCode = 1;
 } finally {
   if (keep) {
-    log(`left running: http://localhost:${PORT}/  (chrome profile ${profile})`);
+    log(`left running: http://localhost:${PORT}/  (chrome profile ${profile})${lab ? `, fake lab on :${LAB}` : ""}`);
     cdp?.close();
     if (chrome) chrome.unref?.();
     if (server) server.unref?.();
+    lab?.unref?.();
   } else {
     cdp?.close();
     killTree(chrome);
     killTree(server);
+    lab?.close();
   }
 }
 

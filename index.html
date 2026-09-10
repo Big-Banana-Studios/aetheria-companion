@@ -37,14 +37,21 @@
           </label>
           <label class="opt">
             <input type="radio" name="brain" value="lab" />
-            <span><b>Lab mode</b> · Moonshine transcribes, the home LiteLLM box answers over HTTP. <em>About 80 MB once. Home network only.</em></span>
+            <span><b>Lab</b> · the box at home answers: the Olares (Model Console or LiteLLM), or any OpenAI-compatible endpoint. Moonshine transcribes here, Kokoro speaks here. <em>About 80 MB once.</em></span>
+          </label>
+          <label class="opt">
+            <input type="radio" name="brain" value="local" />
+            <span><b>A server on this device</b> · the Workbench app's llama.cpp runtime on this phone, or llama-server, LM Studio or Ollama on this PC, at 127.0.0.1. <em>About 80 MB once. Nothing leaves the device.</em></span>
           </label>
         </fieldset>
 
-        <div id="lab-fields" class="lab-fields" hidden>
-          <label>Endpoint <input id="lab-url" type="url" placeholder="http://khadas.local:4000/v1/chat/completions" /></label>
-          <label>Model <input id="lab-model" type="text" placeholder="gpt-oss-20b" /></label>
-          <label>API key <input id="lab-key" type="password" placeholder="optional" /></label>
+        <div id="conn-fields" class="lab-fields" hidden>
+          <label>Endpoint (OpenAI-compatible base URL) <input id="conn-url" type="url" placeholder="https://<id>.laresprime.olares.com/v1" autocapitalize="off" autocorrect="off" spellcheck="false" /></label>
+          <label>API key <input id="conn-key" type="password" placeholder="any non-empty key for Model Console; LiteLLM's key" /></label>
+          <label>Model (exact name from the endpoint; Test fills the list) <input id="conn-model" type="text" list="conn-models" placeholder="unsloth/Qwen3.8-27B-GGUF:Q4_K_M" autocapitalize="off" autocorrect="off" spellcheck="false" /></label>
+          <datalist id="conn-models"></datalist>
+          <div class="btn-row"><button type="button" id="btn-conn-test" class="ghost">Test connection</button><span id="conn-result" class="test-result"></span></div>
+          <p id="conn-hint" class="fine"></p>
         </div>
 
         <p class="fine">Voice: Kokoro 82M (about 330 MB). Ears: Silero VAD (2 MB). Files are cached in the browser; later launches are instant and work offline.</p>
@@ -82,6 +89,11 @@
         <button id="btn-talk" class="talk" title="Hold to talk">
           <span class="talk-label">listening</span>
         </button>
+        <form id="text-row" hidden autocomplete="off">
+          <input id="text-in" type="text" placeholder="Type to her…" enterkeyhint="send" autocapitalize="sentences" />
+          <button id="btn-send" type="submit" class="send" title="Send (empty: stop her)">↑</button>
+        </form>
+        <button id="btn-input" class="round" title="Type instead of talking">⌨</button>
         <button id="btn-settings" class="round" title="Settings">⚙</button>
       </div>
     </main>
@@ -136,7 +148,7 @@
         <label class="row"><input id="set-sampling" type="checkbox" checked /> Varied replies (sampling; off makes her safer and blander)</label>
         <label>Reply length
           <select id="set-length">
-            <option value="auto">Auto: quips on a phone, fuller on a PC</option>
+            <option value="auto">Auto: quips on a phone's on-device brain, fuller on a PC or a network brain</option>
             <option value="short">Short quips (kinder to a phone's GPU)</option>
             <option value="full">Full replies, three to six sentences</option>
           </select>
@@ -164,20 +176,60 @@
           </select>
         </label>
 
-        <label>Persona (system prompt)
+        <label>Persona length
+          <select id="set-persona-preset">
+            <option value="auto">Auto: short on a phone's on-device brain, long on the lab, standard otherwise</option>
+            <option value="short">Short (about 380 tokens; fits a phone's on-device brain)</option>
+            <option value="standard">Standard (about 630 tokens; the Workbench's Mira desk text)</option>
+            <option value="long">Long (about 950 tokens; the full bible, for the lab)</option>
+          </select>
+        </label>
+        <label>Persona (system prompt; edit it to make it your own)
           <textarea id="set-persona" rows="10" spellcheck="false"></textarea>
         </label>
+        <p id="persona-note" class="fine"></p>
         <div class="btn-row">
           <button type="button" id="btn-persona-reset" class="ghost">Reset persona</button>
           <button type="button" id="btn-clear" class="ghost">Clear memory</button>
         </div>
 
-        <details>
-          <summary>Lab mode</summary>
-          <label>Endpoint <input id="set-lab-url" type="url" /></label>
-          <label>Model <input id="set-lab-model" type="text" /></label>
-          <label>API key <input id="set-lab-key" type="password" /></label>
-          <p class="fine">Takes effect after a reload. A page served over https cannot call a plain http endpoint; run the app from a local http server on the same network, or put LiteLLM behind https.</p>
+        <details id="conn-details">
+          <summary>Brains over the network</summary>
+          <label>Brain (takes effect after a reload)
+            <select id="set-brain">
+              <option value="gemma">On-device, full (Gemma 4 E2B)</option>
+              <option value="text">On-device, light (LFM2.5)</option>
+              <option value="lab">Lab: the box at home</option>
+              <option value="local">A server on this device</option>
+            </select>
+          </label>
+          <fieldset>
+            <legend>Lab · the box at home</legend>
+            <label>Endpoint (OpenAI-compatible base URL) <input id="set-lab-url" type="url" placeholder="https://<id>.laresprime.olares.com/v1" autocapitalize="off" autocorrect="off" spellcheck="false" /></label>
+            <label>API key <input id="set-lab-key" type="password" placeholder="any non-empty key for Model Console; LiteLLM's key" /></label>
+            <label>Model <input id="set-lab-model" type="text" list="set-lab-models" placeholder="unsloth/Qwen3.8-27B-GGUF:Q4_K_M" autocapitalize="off" autocorrect="off" spellcheck="false" /></label>
+            <datalist id="set-lab-models"></datalist>
+            <div class="btn-row"><button type="button" id="btn-set-lab-test" class="ghost">Test connection</button><span id="set-lab-result" class="test-result"></span></div>
+            <p class="fine">The Olares: Model Console → Status → Service status, Connection source “Devices on your network”, API format OpenAI-Compatible. Off the home network, LarePass VPN. The Workbench shares this endpoint when both apps are served from the same site.</p>
+          </fieldset>
+          <fieldset>
+            <legend>A server on this device</legend>
+            <label>Address <input id="set-local-url" type="url" placeholder="http://127.0.0.1:8080/v1" autocapitalize="off" autocorrect="off" spellcheck="false" /></label>
+            <label>API key <input id="set-local-key" type="password" placeholder="usually none" /></label>
+            <label>Model <input id="set-local-model" type="text" list="set-local-models" placeholder="Test fills the list; llama-server serves one" autocapitalize="off" autocorrect="off" spellcheck="false" /></label>
+            <datalist id="set-local-models"></datalist>
+            <div class="btn-row"><button type="button" id="btn-set-local-test" class="ghost">Test connection</button><span id="set-local-result" class="test-result"></span></div>
+            <p class="fine">The Workbench app's runtime listens here while it runs (Settings → Native runtime there). On a PC: llama-server, LM Studio with CORS on, or Ollama with OLLAMA_ORIGINS set. Chrome asks once whether this site may reach devices on your network.</p>
+          </fieldset>
+          <label>How the model is told not to think
+            <select id="set-thinkswitch">
+              <option value="auto">Auto: chat_template_kwargs, plus /no_think for Qwen models</option>
+              <option value="template">chat_template_kwargs only (llama.cpp, vLLM)</option>
+              <option value="tag">/no_think only</option>
+              <option value="none">Do not send a switch</option>
+            </select>
+          </label>
+          <p class="fine">Endpoint, key and model changes take effect on the next turn. An https page cannot call a plain http box on the LAN unless Chrome is allowed to (it asks); 127.0.0.1 and https endpoints are always fine.</p>
         </details>
 
         <details>

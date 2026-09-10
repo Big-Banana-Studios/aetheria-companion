@@ -229,10 +229,15 @@ export class Scene {
     this.shake = 0.16;
   }
 
-  resize(vw, vh, groundY, charH = 144) {
+  /**
+   * @param {number} groundY the kerb: the buildings end here, the road begins
+   * @param {number} standY where her feet are (partway down the road); the near signs hang at her fist height
+   */
+  resize(vw, vh, groundY, charH = 144, standY = groundY) {
     this.vw = vw;
     this.vh = vh;
     this.groundY = groundY;
+    this.standY = standY;
     this.charH = charH;
     this._generate();
   }
@@ -336,8 +341,8 @@ export class Scene {
     const cx = Math.floor(vw / 2);
     const signH = Math.max(10, Math.round(22 * k));
     const signW = Math.max(18, Math.round(44 * k));
-    // Measured on the punch frames: her fist travels at 0.78 of her height.
-    const fistY = groundY - Math.round(this.charH * 0.78);
+    // Measured on the punch frames: her fist travels at 0.78 of her height, from where she stands.
+    const fistY = (this.standY ?? groundY) - Math.round(this.charH * 0.78);
     this.signs = [
       this._sign(rand, Math.round(cx - vw * 0.36 - signW / 2), fistY - Math.round(signH / 2), signW, signH, look.signL, false, 1.0),
       this._sign(rand, Math.round(cx + vw * 0.33 - signW / 2), fistY - Math.round(signH / 2), signW, signH, look.signR, true, 1.0),

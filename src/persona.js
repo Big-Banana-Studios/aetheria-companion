@@ -1,30 +1,35 @@
-// The system prompt = the persona (persona.md, editable in Settings) + a
-// short wire protocol the app depends on, appended here so editing the
-// persona cannot break the plumbing.
-import DEFAULT_PERSONA from "../persona.md?raw";
+// Mira's persona in three lengths, one file each in personas/: the same
+// voice (dark, dry, deadpan; two gears, the flat observation and the
+// incredulous run), sized for the brain that reads it. Short fits a phone's
+// on-device prompt budget (about 700 tokens with the protocol; the ROG
+// Phone's GPU refused a longer one), standard is the text the Workbench's
+// Mira desk uses (prompts/mira.md there), long is the full bible for the
+// lab's big model. The builder lives in prompt.js so the Node checks can
+// import it without Vite.
+import { IS_MOBILE, isRemote } from "./settings.js";
 
-export { DEFAULT_PERSONA };
+const FILES = import.meta.glob("../personas/*.md", { query: "?raw", import: "default", eager: true });
+const file = (name) => FILES[Object.keys(FILES).find((k) => k.endsWith(`/${name}.md`))] || "";
 
-export const MOODS = ["calm", "happy", "curious", "concerned", "amused", "excited", "annoyed", "sassy", "tired", "thoughtful"];
+export const PERSONAS = {
+  short: { name: "Short", about: "about 380 tokens; fits a phone's on-device brain", text: file("mira-short") },
+  standard: { name: "Standard", about: "about 630 tokens; the Workbench's Mira desk text", text: file("mira") },
+  long: { name: "Long", about: "about 950 tokens; the full bible, for the lab's big model", text: file("mira-long") },
+};
 
-// How deep the conversation is, and which district that puts her in.
-export const DEPTHS = { small: "HEART", mid: "GUT", deep: "HEAD" };
+export const DEFAULT_PERSONA = PERSONAS.standard.text;
 
-/**
- * @param {string} persona  the human part
- * @param {{audio: boolean, camera: boolean}} caps  what this brain can do
- */
-export function buildSystemPrompt(persona, { audio = true, camera = true } = {}) {
-  // Kept short on purpose: the whole prompt is prefilled on a phone's GPU.
-  const rules = [
-    `Start every reply with two tags and a space: a mood tag from [calm] [happy] [curious] [concerned] [amused] [excited] [annoyed] [sassy] [tired] [thoughtful] (sassy is cheek, annoyed is real irritation), then a depth tag: [small] chit-chat, [mid] personal or practical, [deep] the big questions. Example: "[curious] [mid] Long day, then. What went wrong?" Tags are stripped before speech.`,
-    `The depth moves you between the Street Market (small talk, quick, dry), the Undercity (personal, blunt, some grit) and the Stack (big questions, exact, no consolation); a note saying where you are sets your register.`,
-  ];
-  if (camera) {
-    rules.push(`If asked to look at something, include [look] and keep to one sentence; you will get a camera still.`);
-  }
-  // (`audio` used to add a "write >> transcript after the reply" rule; the
-  // E2B model ignored it, so transcripts come from Moonshine in stt.worker.js.)
-  void audio;
-  return `${persona.trim()}\n\nProtocol.\n${rules.map((r, i) => `${i + 1}. ${r}`).join("\n")}`;
+/** Which preset applies: the chosen one, else by brain and device. */
+export function personaPreset(settings) {
+  const p = settings.personaPreset;
+  if (p && PERSONAS[p]) return p;
+  if (isRemote(settings.brain)) return "long";
+  return IS_MOBILE ? "short" : "standard";
 }
+
+/** The persona text in force: one edited by hand, else the preset's. */
+export function personaText(settings) {
+  return settings.persona || PERSONAS[personaPreset(settings)].text;
+}
+
+export { MOODS, DEPTHS, buildSystemPrompt } from "./prompt.js";

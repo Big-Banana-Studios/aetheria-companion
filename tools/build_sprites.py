@@ -737,14 +737,20 @@ def build(packs, out, frame_px, char_h, feet_y, talk):
             "lookup":   [{"clip": "idle_up", "dur": 1.5}],
             "glance":   [{"clip": "idle_southeast", "dur": 1.2}],
             "listen_long": [{"clip": "resonate_down", "hold": -1}],
+            # the stroll is not a fixed step list: the renderer generates one
+            # each time (edge to edge at an easy gait, a smoke partway now and
+            # then, back to the middle) from these numbers
+            "stroll":   {"generated": "renderer._strollSteps: edge to edge at an easy gait, a smoke partway now and then, back to the middle",
+                         "fps": 10, "crossings": [2, 3], "stop_chance": 0.5, "puff_seconds": [5, 8], "edge_pause": [0.8, 1.8]},
         },
         "states": {
             "idle":        {"clip": "idle_down",   "bob": True,  "blink": True,
-                            "fidgets": ["glance", "lookup", "lookaway"], "fidget_every": [12, 25]},
+                            "fidgets": ["glance", "lookup", "lookaway"], "fidget_every": [12, 25],
+                            "stroll_every": [35, 70]},
             "idle_long":   {"clips": ["smoke_southeast", "smoke_right", "smoke_southwest", "smoke_left",
                                       "smoke_northeast", "smoke_up", "smoke_northwest"],
-                            "after_seconds": 90, "turn_every": [8, 20], "optional": True,
-                            "note": "the smoke break; she looks around while she sits it out"},
+                            "after_seconds": 90, "turn_every": [8, 20], "optional": True, "stroll_every": [25, 50],
+                            "note": "the smoke break; she looks around while she sits it out, and now and then gets up to pace the street"},
             "listening":   {"clip": "walk_down",   "fps": 6, "aura": "low",
                             "long_after": 5, "long": "listen_long"},
             "thinking":    {"clip": "idle_right",  "turn_every": 1.2, "particles": True,

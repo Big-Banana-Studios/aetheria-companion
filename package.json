@@ -13,8 +13,12 @@
     "build": "vite build",
     "preview": "vite preview --host",
     "sprites": "python tools/build_sprites.py --pack ../top-down-bagless-courier-spritesheet --pack \"../the Courier sleep\" --out public/assets/sprites/courier",
-    "check": "node tools/smoke_api.mjs && node tools/smoke_vad.mjs",
+    "check": "node tools/smoke_api.mjs && node tools/smoke_vad.mjs && node tools/smoke_lab.mjs",
+    "check:lab": "node tools/smoke_lab.mjs",
+    "fakelab": "node tools/fake_lab.mjs",
     "test:pc": "node tools/pc_test.mjs",
+    "test:lab": "node tools/pc_test.mjs --brain=lab --fakelab",
+    "test:local": "node tools/pc_test.mjs --brain=local --fakelab",
     "pc": "node tools/pc.mjs",
     "shots": "node tools/screenshots.mjs"
   },

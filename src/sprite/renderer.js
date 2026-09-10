@@ -55,7 +55,9 @@ export class SpriteRenderer {
     this.H = 0;
     this.vw = 0;
     this.vh = 0;
-    this.groundY = 0;
+    this.groundY = 0; // the kerb: where the buildings end and the road begins
+    this.standY = 0; // where her feet are: partway down the road
+    this.strollAt = 0; // when she next paces the stage, in idle or on a smoke break
     this.scene = new Scene();
     this.scene.setMoodTable(this.moods);
 
@@ -176,6 +178,11 @@ export class SpriteRenderer {
     });
   }
 
+  /** She is pacing the stage (the stroll): the quiet-time states wait for her to finish. */
+  get strolling() {
+    return this.seq?.name === "stroll";
+  }
+
   /** The user has been talking a while: she opens up. */
   listenLong() {
     const st = this.m.states.listening;
@@ -217,7 +224,7 @@ export class SpriteRenderer {
    * @param {string} name
    */
   gesture(name) {
-    const steps = this.gestures[name];
+    const steps = name === "stroll" ? this._strollSteps() : this.gestures[name];
     if (!steps || !steps.length) return;
     if (this.seq?.sticky) return; // she is walking to another district; nothing interrupts that but the user
     let side = 0;
@@ -239,10 +246,56 @@ export class SpriteRenderer {
     return this.m.clips[m] ? m : clipName;
   }
 
+  /** How far from the middle she can go and still be wholly on screen. */
+  _edge() {
+    return Math.max(10, this.vw / 2 - this.F * 0.32);
+  }
+
+  /**
+   * A stroll: she paces the whole stage, edge to edge, at an easy gait, now
+   * and then stopping partway for a few puffs facing the way she was going,
+   * and ends back in the middle. Generated fresh each time so no two are
+   * alike; the numbers live in the manifest's `gestures.stroll`.
+   */
+  _strollSteps() {
+    const g = this.gestures.stroll || {};
+    const rnd = (lo, hi) => lo + Math.random() * (hi - lo);
+    const pick = (r) => (Array.isArray(r) ? Math.round(rnd(r[0], r[1])) : r);
+    const fps = g.fps ?? 14; // the walk clip at about half its measured pace
+    const crossings = pick(g.crossings || [2, 3]);
+    const stopChance = g.stop_chance ?? 0.5;
+    const puff = g.puff_seconds || [5, 8];
+    const pause = g.edge_pause || [0.8, 1.8];
+    const edge = this._edge();
+    let dir = this.x < 0 ? 1 : this.x > 0 ? -1 : Math.random() < 0.5 ? -1 : 1;
+    let x = this.x;
+    const steps = [];
+    for (let i = 0; i < crossings; i++) {
+      const to = Math.round(dir * edge);
+      const walk = dir > 0 ? "walk_right" : "walk_left";
+      if (Math.random() < stopChance && Math.abs(to - x) > this.F * 0.5) {
+        const mid = Math.round(x + (to - x) * rnd(0.3, 0.7));
+        steps.push({ clip: walk, to: mid, fps });
+        steps.push({ clip: dir > 0 ? "smoke_right" : "smoke_left", dur: rnd(puff[0], puff[1]) });
+        x = mid;
+      }
+      steps.push({ clip: walk, to, fps });
+      x = to;
+      // at the edge: a look back at you, or up at the rain, before she turns
+      steps.push({ clip: Math.random() < 0.6 ? "idle_down" : "idle_up", dur: rnd(pause[0], pause[1]) });
+      dir = -dir;
+    }
+    steps.push({ clip: dir > 0 ? "walk_right" : "walk_left", to: 0, fps });
+    steps.push({ clip: "idle_down", dur: 0.3 });
+    return steps;
+  }
+
   _resolvePos(p, side) {
     if (typeof p === "number") return p;
     if (p === "offleft") return -(this.vw / 2 + this.F * 0.6);
     if (p === "offright") return this.vw / 2 + this.F * 0.6;
+    if (p === "edgeleft") return -this._edge();
+    if (p === "edgeright") return this._edge();
     if (p === "sign") {
       // her fist reaches about a third of a frame from her centre on the contact frame
       const at = this.scene.signStand(side || 1, Math.round(this.F * 0.33));
@@ -283,6 +336,7 @@ export class SpriteRenderer {
       this.smokeIdx = 0;
       this._play(st.clips[0]);
       this._scheduleSmokeTurn(st);
+      this._scheduleStroll(st);
     } else if (st.clips && st.clips.length) {
       // a nap: lie down facing whichever way, once, and stay there
       this._play(st.clips[Math.floor(Math.random() * st.clips.length)]);
@@ -295,7 +349,10 @@ export class SpriteRenderer {
     } else {
       this._play(st.clip);
     }
-    if (name === "idle") this._scheduleFidget(st);
+    if (name === "idle") {
+      this._scheduleFidget(st);
+      this._scheduleStroll(st);
+    }
     if (st.strike) this.scene.strike(1);
     // situations: startled awake; a flinch before she goes down
     if (prev === "asleep" && name !== "asleep" && name !== "error") this.gesture("startle");
@@ -345,8 +402,12 @@ export class SpriteRenderer {
     this.vh = Math.ceil(this.H / this.s);
     this.vc.width = this.vw;
     this.vc.height = this.vh;
-    this.groundY = this.vh - Math.max(18, Math.round(this.vh * 0.11));
-    this.scene.resize(this.vw, this.vh, this.groundY, this.m.meta.character_height);
+    // the road is the bottom quarter of the screen; she stands a little
+    // past halfway down it, so her feet are on the street, not on the
+    // buildings, and there is road below her for the reflection
+    this.groundY = this.vh - Math.max(30, Math.round(this.vh * 0.24));
+    this.standY = this.groundY + Math.round((this.vh - this.groundY) * 0.55);
+    this.scene.resize(this.vw, this.vh, this.groundY, this.m.meta.character_height, this.standY);
     this.ctx.imageSmoothingEnabled = false;
   }
 
@@ -380,10 +441,20 @@ export class SpriteRenderer {
     this.fidgetAt = this.t + lo + Math.random() * (hi - lo);
   }
 
-  _speed(clip) {
-    // px/s at which this gait's feet stay on the ground
+  /** The next stroll, if this state has them (`stroll_every` in the manifest). */
+  _scheduleStroll(st) {
+    if (!st.stroll_every) {
+      this.strollAt = 0;
+      return;
+    }
+    const [lo, hi] = st.stroll_every;
+    this.strollAt = this.t + lo + Math.random() * (hi - lo);
+  }
+
+  _speed(clip, fps = clip.fps) {
+    // px/s at which this gait's feet stay on the ground, at the rate it is played
     const n = clip.frames.length;
-    return ((clip.cycle_px || 124) * clip.fps) / n;
+    return ((clip.cycle_px || 124) * fps) / n;
   }
 
   _nextStep() {
@@ -425,7 +496,7 @@ export class SpriteRenderer {
       this.x = from;
       seq.x0 = from;
       seq.x1 = to;
-      seq.dur = Math.abs(to - from) / this._speed(clip);
+      seq.dur = Math.abs(to - from) / this._speed(clip, fps);
     } else {
       seq.x1 = this.x + (step.dx || 0) * (seq.side < 0 ? -1 : 1);
       seq.dur = step.min != null ? step.min : step.dur != null ? step.dur : nFrames / fps;
@@ -498,6 +569,12 @@ export class SpriteRenderer {
           this._play(this.side > 0 ? "idle_right" : "idle_left");
         }
       }
+      if ((this.state === "idle" || this.state === "idle_long") && this.strollAt && this.t >= this.strollAt) {
+        // quiet for a while: she paces the stage, and stops for a smoke on the way
+        this._scheduleStroll(st);
+        this.gesture("stroll");
+        return;
+      }
       if (this.state === "idle" && this.t >= this.fidgetAt && st.fidgets?.length) {
         this.gesture(st.fidgets[Math.floor(Math.random() * st.fidgets.length)]);
       }
@@ -527,7 +604,7 @@ export class SpriteRenderer {
 
   _draw() {
     const v = this.vctx;
-    const { F, vw, vh, groundY } = this;
+    const { F, vw, vh, standY } = this;
     if (!vw || !vh) {
       this.resize();
       if (!this.vw) return;
@@ -547,7 +624,7 @@ export class SpriteRenderer {
     if (this.t < this.nodUntil) oy += 1;
 
     const dx = Math.round(vw / 2 - F / 2 + this.x);
-    const dy = groundY - this.m.meta.feet_y + oy;
+    const dy = standY - this.m.meta.feet_y + oy;
     const ref = this.m.clips.idle_down.frames[0];
     const headY = dy + (ref.visor ? ref.visor.y + ref.visor.h / 2 : F * 0.22);
     const cx = dx + F / 2;
@@ -575,12 +652,13 @@ export class SpriteRenderer {
       ctx.restore();
     };
     if (this.scene.enabled) {
+      // mirrored in the wet road under her feet
       v.save();
       v.beginPath();
-      v.rect(0, groundY + 5, vw, vh - groundY - 5);
+      v.rect(0, standY + 3, vw, vh - standY - 3);
       v.clip();
       v.globalAlpha = 0.18;
-      drawHer(v, dx + Math.round(Math.sin(this.t * 2.1) * 1.5), dy - oy, groundY + 2);
+      drawHer(v, dx + Math.round(Math.sin(this.t * 2.1) * 1.5), dy - oy, standY + 1);
       v.restore();
     }
     drawHer(v, dx, dy, 0);

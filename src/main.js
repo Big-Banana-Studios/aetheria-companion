@@ -1,7 +1,8 @@
 // Entry point: WebGPU check, the download gate, then the stage.
 
-import { loadSettings, saveSettings, resolveRegime, REGIMES } from "./settings.js";
-import { DEFAULT_PERSONA } from "./persona.js";
+import { loadSettings, saveSettings, resolveRegime, REGIMES, isRemote, connection, adoptFromWorkbench } from "./settings.js";
+import { PERSONAS, personaPreset, personaText } from "./persona.js";
+import { testEndpoint, pickModel } from "./lab.js";
 import { SpriteRenderer } from "./sprite/renderer.js";
 import { Companion } from "./companion.js";
 import { DebugOverlay } from "./debug.js";
@@ -10,17 +11,31 @@ const $ = (id) => document.getElementById(id);
 const BASE = import.meta.env.BASE_URL || "/";
 
 const settings = loadSettings();
+// The Aetheria Workbench on this origin may have set the lab up first, or
+// had her prompt edited there: take what this app does not have yet.
+const adopted = adoptFromWorkbench(settings);
+if (adopted.length) saveSettings(settings);
 let renderer = null;
 let companion = null;
 let debug = null;
+let gateConn = null; // the endpoint fields on the gate (bindConn)
+let labConn = null; // and in Settings
+let localConn = null;
 
 // Known sizes, so the total bar is honest before every file has reported in.
 const EXPECTED_MB = {
   gemma: 3480, // + Moonshine for the transcript strip
   text: 1620,
-  lab: 80,
+  lab: 80, // Moonshine only
+  local: 80,
   tts: 330,
   vad: 2.3,
+};
+
+// What to paste where, per network brain.
+const CONN_HINTS = {
+  lab: "The Olares: Model Console → Status → Service status, with Connection source “Devices on your network” and API format OpenAI-Compatible, shows an https://<id>.laresprime.olares.com/v1 URL. Any non-empty key unless the instance has one; the model name exactly as Model Console shows it (Test fills the list). Off the home network, LarePass VPN. LiteLLM works the same way with its key, with CORS open to this site.",
+  local: "The Workbench app's runtime on this phone listens at http://127.0.0.1:8080/v1 while it is running (start it there: Settings → Native runtime). On a PC: llama-server, LM Studio with CORS switched on, or Ollama with OLLAMA_ORIGINS set. Chrome asks once whether this site may reach devices on your network; allow it.",
 };
 
 // ------------------------------------------------------------------ boot
@@ -39,13 +54,16 @@ async function main() {
   const gpu = await checkWebGPU();
   const msg = $("gate-msg");
   if (!gpu.ok) {
-    msg.textContent = gpu.reason;
+    msg.textContent = gpu.reason + (isRemote(settings.brain) ? " The brain you chose answers over the network, which does not need it." : "");
     msg.classList.add("error");
-    $("btn-start").disabled = settings.brain !== "lab";
+    $("btn-start").disabled = !isRemote(settings.brain);
   } else {
     msg.textContent = gpu.f16 ? "WebGPU ready (fp16 shaders available)." : "WebGPU ready. No fp16 shaders: the model will use the larger q4 files.";
   }
+  if (adopted.length) msg.textContent += ` Took ${adopted.map((a) => (a === "lab" ? "the lab endpoint" : "her prompt")).join(" and ")} from the Workbench.`;
   window.__gpu = gpu;
+  // a network brain chosen last time: see whether it answers, and fill the model list
+  if (isRemote(settings.brain) && connection(settings).url) gateConn.test(true);
   await loadSprite();
   if (q0.has("debug")) settings.debug = true;
   // experiments, this run only: ?sampling=0|1
@@ -157,6 +175,7 @@ async function loadSprite() {
     mouth = await loadImage(`${dir}${manifest.mouth.source}`).catch(() => null);
   }
   renderer = new SpriteRenderer($("sprite"), manifest, atlas, { mouth });
+  window.__renderer = renderer; // for tools/screenshots.mjs and the console
   applyRegime();
 }
 
@@ -191,27 +210,77 @@ function showRegimeChip(r) {
 // ------------------------------------------------------------------ gate
 
 function bindGate() {
+  gateConn = bindConn({ url: "conn-url", key: "conn-key", model: "conn-model", list: "conn-models", test: "btn-conn-test", result: "conn-result" }, () => connection(settings));
+  const showConn = () => {
+    const remote = isRemote(settings.brain);
+    $("conn-fields").hidden = !remote;
+    if (!remote) return;
+    gateConn.fill();
+    $("conn-hint").textContent = CONN_HINTS[settings.brain] || "";
+    $("conn-url").placeholder = settings.brain === "local" ? "http://127.0.0.1:8080/v1" : "https://<id>.laresprime.olares.com/v1";
+  };
   const radios = document.querySelectorAll('input[name="brain"]');
   radios.forEach((r) => {
     r.checked = r.value === settings.brain;
     r.addEventListener("change", () => {
       settings.brain = r.value;
-      $("lab-fields").hidden = settings.brain !== "lab";
-      $("btn-start").disabled = !(window.__gpu?.ok || settings.brain === "lab");
       saveSettings(settings);
+      showConn();
+      $("btn-start").disabled = !(window.__gpu?.ok || isRemote(settings.brain));
+      if (isRemote(settings.brain) && connection(settings).url) gateConn.test(true);
     });
   });
-  $("lab-fields").hidden = settings.brain !== "lab";
-  $("lab-url").value = settings.lab.url;
-  $("lab-model").value = settings.lab.model;
-  $("lab-key").value = settings.lab.apiKey;
-  for (const [id, key] of [["lab-url", "url"], ["lab-model", "model"], ["lab-key", "apiKey"]]) {
-    $(id).addEventListener("input", (e) => {
-      settings.lab[key] = e.target.value.trim();
+  showConn();
+  $("btn-start").addEventListener("click", start);
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+}
+
+/**
+ * The endpoint / key / model trio with a Test button, bound to one of the
+ * settings blocks (`block()` returns settings.lab or settings.local; on the
+ * gate, whichever the chosen brain uses). Test hits /v1/models, reports
+ * the latency, fills the model list, and picks a model if none is set.
+ */
+function bindConn(ids, block) {
+  const ui = Object.fromEntries(Object.entries(ids).map(([k, id]) => [k, $(id)]));
+  const fill = () => {
+    const b = block();
+    ui.url.value = b.url || "";
+    ui.key.value = b.apiKey || "";
+    ui.model.value = b.model || "";
+    ui.result.textContent = "";
+    ui.result.className = "test-result";
+  };
+  for (const [el, key] of [[ui.url, "url"], [ui.key, "apiKey"], [ui.model, "model"]]) {
+    el.addEventListener("input", (e) => {
+      block()[key] = e.target.value.trim();
       saveSettings(settings);
     });
   }
-  $("btn-start").addEventListener("click", start);
+  const test = async (quiet = false) => {
+    const b = block();
+    ui.result.className = "test-result";
+    ui.result.textContent = "testing…";
+    const r = await testEndpoint({ url: b.url, apiKey: b.apiKey, timeoutMs: quiet ? 4000 : 8000 });
+    if (block() !== b) return r; // the brain changed under the test
+    ui.result.className = `test-result ${r.ok ? "ok" : "bad"}`;
+    if (r.ok) {
+      ui.list.innerHTML = r.models.map((m) => `<option value="${escapeHtml(m)}"></option>`).join("");
+      if (!b.model && r.models.length) {
+        b.model = pickModel(r.models, "");
+        ui.model.value = b.model;
+        saveSettings(settings);
+      }
+      const listed = !r.models.length || r.models.includes(b.model);
+      ui.result.textContent = `OK · ${r.ms} ms · ${r.models.length} model${r.models.length === 1 ? "" : "s"}${b.model ? ` · ${b.model}${listed ? "" : " (not in its list)"}` : ""}`;
+    } else ui.result.textContent = `Failed: ${r.error}`;
+    return r;
+  };
+  ui.test.addEventListener("click", () => test());
+  return { fill, test };
 }
 
 const files = new Map(); // file -> {loaded, total, model, done}
@@ -279,6 +348,7 @@ async function start() {
   renderer.start();
   fillVoices();
   updateStorageInfo();
+  applyInputMode(); // text mode remembered from last time: the mic starts paused
 }
 
 function setGateMsg(text, error = false) {
@@ -405,6 +475,26 @@ function applyModeUI() {
   talk.title = ptt ? "Hold to talk" : "Tap to pause or resume listening";
 }
 
+/**
+ * Voice or text in the footer: the talk button, or a box to type in. The
+ * mic pauses while the box is up (the phone's own keyboard clicks would
+ * otherwise wake the VAD) and listening resumes when the talk button is
+ * back. Remembered across launches.
+ */
+function applyInputMode() {
+  const text = settings.input === "text";
+  $("btn-talk").hidden = text;
+  $("text-row").hidden = !text;
+  const b = $("btn-input");
+  b.textContent = text ? "🎙" : "⌨";
+  b.title = text ? "Back to talking" : "Type instead of talking";
+  b.classList.toggle("on", text);
+  if (companion?.live) {
+    companion.setPaused(text);
+    applyModeUI();
+  }
+}
+
 function bindStage() {
   const talk = $("btn-talk");
   let held = false;
@@ -437,12 +527,35 @@ function bindStage() {
   talk.addEventListener("pointercancel", up);
   talk.addEventListener("contextmenu", (e) => e.preventDefault());
 
+  // typing instead of talking
+  $("btn-input").addEventListener("click", () => {
+    settings.input = settings.input === "text" ? "voice" : "text";
+    saveSettings(settings);
+    applyInputMode();
+    if (settings.input === "text") $("text-in").focus();
+  });
+  $("text-row").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const box = $("text-in");
+    const v = box.value.trim();
+    if (!companion?.live) return toast("start her first");
+    if (!v) {
+      // an empty send while she talks: stop her
+      if (companion.state === "speaking" || companion.state === "thinking") companion.interrupt();
+      return;
+    }
+    box.value = "";
+    companion.sendText(v);
+  });
+  applyInputMode();
+
   $("btn-cam").addEventListener("click", async () => {
     try {
       const on = await companion.toggleCamera($("cam"));
       $("cam-wrap").hidden = !on;
       $("btn-cam").classList.toggle("on", on);
-      if (on && settings.brain !== "gemma") toast("only the full on-device brain can see; the still will be ignored");
+      if (on && settings.brain === "text") toast("the light brain cannot see; the still will be ignored");
+      else if (on && isRemote(settings.brain)) toast("the still goes to the model with your next turn, if it can see");
     } catch (e) {
       toast(`camera: ${e.message}`, true);
     }
@@ -500,15 +613,40 @@ function openSettings() {
   $("set-ttsdevice").value = settings.ttsDevice === "cpu" ? "cpu" : "auto";
   $("set-regime").value = settings.regime;
   $("set-stt").value = settings.sttModel || "tiny";
-  $("set-persona").value = settings.persona || DEFAULT_PERSONA;
-  $("set-lab-url").value = settings.lab.url;
-  $("set-lab-model").value = settings.lab.model;
-  $("set-lab-key").value = settings.lab.apiKey;
+  $("set-persona-preset").value = settings.personaPreset || "auto";
+  $("set-persona").value = personaText(settings);
+  renderPersonaNote();
+  $("set-brain").value = settings.brain;
+  $("set-thinkswitch").value = settings.thinkSwitch || "auto";
+  labConn.fill();
+  localConn.fill();
   updateStorageInfo();
   $("settings").showModal();
 }
 
+/** Under the persona box: which preset is in force, or that it was edited, and where. */
+function renderPersonaNote() {
+  const preset = PERSONAS[personaPreset(settings)];
+  const auto = !settings.personaPreset || settings.personaPreset === "auto";
+  let note;
+  if (settings.persona) {
+    note = settings.personaFrom === "workbench" ? "The prompt you edited on the Workbench's Mira desk. Reset persona returns to the preset." : "Edited here. Reset persona returns to the preset.";
+  } else {
+    note = `${preset.name} preset in force${auto ? " (auto: short on a phone's on-device brain, long on a network brain, standard otherwise)" : ""}: ${preset.about}. The same voice in all three; on a network brain the app adds the Workbench desk's framing: room to talk, the date, which model answers.`;
+  }
+  $("persona-note").textContent = note;
+}
+
 function bindSettings() {
+  $("set-persona-preset").addEventListener("change", (e) => {
+    settings.personaPreset = e.target.value;
+    settings.persona = null; // the preset's text, not an old edit
+    delete settings.personaFrom;
+    saveSettings(settings);
+    $("set-persona").value = personaText(settings);
+    renderPersonaNote();
+    companion?.resetContext();
+  });
   $("set-voice").addEventListener("change", (e) => {
     companion?.setVoice(e.target.value);
     saveSettings(settings);
@@ -617,27 +755,37 @@ function bindSettings() {
   let personaTimer = 0;
   $("set-persona").addEventListener("input", (e) => {
     const v = e.target.value;
-    settings.persona = v.trim() === DEFAULT_PERSONA.trim() ? null : v;
+    settings.persona = v.trim() === PERSONAS[personaPreset(settings)].text.trim() ? null : v;
+    delete settings.personaFrom; // edited here now
     saveSettings(settings);
+    renderPersonaNote();
     clearTimeout(personaTimer);
     personaTimer = setTimeout(() => companion?.resetContext(), 1200);
   });
   $("btn-persona-reset").addEventListener("click", () => {
     settings.persona = null;
-    $("set-persona").value = DEFAULT_PERSONA;
+    delete settings.personaFrom;
     saveSettings(settings);
+    $("set-persona").value = personaText(settings);
+    renderPersonaNote();
     companion?.resetContext();
   });
   $("btn-clear").addEventListener("click", () => {
     companion?.clearMemory();
     toast("memory cleared");
   });
-  for (const [id, key] of [["set-lab-url", "url"], ["set-lab-model", "model"], ["set-lab-key", "apiKey"]]) {
-    $(id).addEventListener("input", (e) => {
-      settings.lab[key] = e.target.value.trim();
-      saveSettings(settings);
-    });
-  }
+  labConn = bindConn({ url: "set-lab-url", key: "set-lab-key", model: "set-lab-model", list: "set-lab-models", test: "btn-set-lab-test", result: "set-lab-result" }, () => settings.lab);
+  localConn = bindConn({ url: "set-local-url", key: "set-local-key", model: "set-local-model", list: "set-local-models", test: "btn-set-local-test", result: "set-local-result" }, () => settings.local);
+  $("set-brain").addEventListener("change", (e) => {
+    settings.brain = e.target.value;
+    saveSettings(settings);
+    document.querySelectorAll('input[name="brain"]').forEach((r) => (r.checked = r.value === settings.brain));
+    toast("brain saved; reload to switch to it");
+  });
+  $("set-thinkswitch").addEventListener("change", (e) => {
+    settings.thinkSwitch = e.target.value;
+    saveSettings(settings);
+  });
   $("btn-purge").addEventListener("click", async () => {
     if (!confirm("Delete all downloaded model files from this browser? They will download again next time.")) return;
     for (const name of ["transformers-cache", "kokoro-voices", "companion-voices"]) {
